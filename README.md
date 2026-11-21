@@ -73,6 +73,8 @@ Everything is on **one screen**, like a desktop video editor. Nothing is step by
 | **Crop** | Select clip → *Crop / Remove watermark* → Left / Right / Top / Bottom, or *Crop to 16:9 / 9:16 shape* |
 | **Watermark / logo remover** | Same window → drag a box over the logo → *Remove (fill from surroundings)* or *Blur*. *Apply to all clips from this file* copies the boxes. |
 | **Speed** | 0.25× slow motion up to 4× fast |
+| **Speed of just one part** | Mark the part (`I` / `O` or Shift + drag on the ruler) → **⏩ Speed part** → 0.25×–4×. Only that part changes, and text, music and voice after it move along so they stay in sync. Clip sound in a part slower than 0.7× or faster than 1.6× is muted. |
+| **Split screen** | **▦ Split screen** on the toolbar → choose a layout (side by side, top/bottom, big + 2, 2 + big, three, 2×2, six, picture-in-picture, main + 2 small), a **frame design** (clean lines, rounded cards, polaroid, neon glow, diagonal cut, circles, tilted collage, film strip) and a video for each frame. With a part marked, that part becomes the split screen and the clip already there goes in frame 1; otherwise it is inserted after the clip at the playhead. Select it to change each frame's video, start point, sound, volume, fill/fit and zoom, plus the gap, corners and border colour. All frames play at the same time. |
 | **Clip sound** | On/off, volume 0–200 %, *Detach sound* (moves it to the Voice track to trim/fade separately) |
 | **Fade in / out (video)** | From and to black, per clip |
 | **Fit / fill, rotate, mirror** | Fit shows the whole picture on a blurred background, which is useful for vertical clips in a wide video |

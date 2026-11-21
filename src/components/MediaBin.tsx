@@ -34,7 +34,7 @@ export function MediaBin({ store, addFiles, time, onCompress }: {
     media: c.media.filter((m) => m.id !== id),
     rows: c.rows.map((r) => (r.mediaId === id ? { ...r, mediaId: undefined } : r)),
     bites: c.bites.filter((b) => b.mediaId !== id),
-    scenes: c.scenes.map((s) => ({ ...s, mediaIds: s.mediaIds.filter((x) => x !== id), voiceId: s.voiceId === id ? undefined : s.voiceId })),
+    scenes: c.scenes.map((s) => ({ ...s, mediaIds: s.mediaIds.filter((x) => x !== id), cells: s.cells?.filter((x) => x.mediaId !== id), voiceId: s.voiceId === id ? undefined : s.voiceId })),
     audio: c.audio.filter((a) => a.mediaId !== id),
     overlays: c.overlays.filter((o) => o.mediaId !== id),
     cta: { ...c.cta, logoId: c.cta.logoId === id ? undefined : c.cta.logoId, cutoutId: c.cta.cutoutId === id ? undefined : c.cta.cutoutId },

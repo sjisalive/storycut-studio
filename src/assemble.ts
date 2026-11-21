@@ -21,9 +21,9 @@ export function defaultProject(): Project {
   };
 }
 
-const BASE: Record<SceneKind, number> = { hook: 3.8, montage: 1.2, speaker: 4, headline: 4.2, item: 3.6, steps: 6, stat: 4.6, moment: 3, cta: 5 };
-const MIN: Record<SceneKind, number> = { hook: 2.4, montage: 0.7, speaker: 2, headline: 2.8, item: 2.2, steps: 3.5, stat: 3, moment: 1.8, cta: 3.2 };
-const MAX: Record<SceneKind, number> = { hook: 6, montage: 1.9, speaker: 30, headline: 6.5, item: 7, steps: 14, stat: 6.5, moment: 6, cta: 8 };
+const BASE: Record<SceneKind, number> = { hook: 3.8, montage: 1.2, speaker: 4, headline: 4.2, item: 3.6, steps: 6, stat: 4.6, moment: 3, cta: 5, grid: 5 };
+const MIN: Record<SceneKind, number> = { hook: 2.4, montage: 0.7, speaker: 2, headline: 2.8, item: 2.2, steps: 3.5, stat: 3, moment: 1.8, cta: 3.2, grid: 1 };
+const MAX: Record<SceneKind, number> = { hook: 6, montage: 1.9, speaker: 30, headline: 6.5, item: 7, steps: 14, stat: 6.5, moment: 6, cta: 8, grid: 30 };
 
 const visualOk = (m: MediaItem) => m.status === 'ready' && (m.kind === 'video' || m.kind === 'image') && (m.role === 'clip' || m.role === 'photo');
 const rowHasContent = (r: ContentRow) => !!(r.title || r.subtitle || r.highlight || r.mediaId);

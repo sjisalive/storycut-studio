@@ -10,7 +10,8 @@ import { ASPECTS } from './presets';
 import { renderFrame, timeline } from './render/engine';
 import { dims } from './export/exporter';
 import { ExactRuntime } from './export/runtime';
-import { addClips, deleteRange, keepRange, mainMusic, migrate, newOverlay, splitAt } from './edit';
+import { addClips, deleteRange, keepRange, mainMusic, migrate, newOverlay, setSpeedRange, splitAt } from './edit';
+import { GridPicker } from './components/GridPanel';
 import { download, fmtTime, uid } from './util';
 import { Player, type PlayerHandle } from './components/Player';
 import { MultiTimeline, type Sel } from './components/MultiTimeline';
@@ -53,6 +54,8 @@ export default function App() {
   const [beatsInfo, setBeatsInfo] = useState('');
   const [toast, setToast] = useState('');
   const [busy, setBusy] = useState('');
+  const [speedMenu, setSpeedMenu] = useState(false);
+  const [gridOpen, setGridOpen] = useState(false);
   const dirty = useRef(false);
   const { total } = timeline(p);
   // Test hook (only with ?test in the address) so automated checks can read the project.
@@ -134,6 +137,14 @@ export default function App() {
   const setOut = () => update((c) => ({ ...c, rangeOut: time, rangeIn: c.rangeIn !== undefined && c.rangeIn < time ? c.rangeIn : Math.max(0, time - 2) }));
   const hasRange = p.rangeIn !== undefined && p.rangeOut !== undefined && p.rangeOut - p.rangeIn > 0.02;
   const delRange = () => { if (!hasRange) { say('Mark a part first with I and O (or Shift + drag on the time ruler).'); return; } const d = p.rangeOut! - p.rangeIn!; update(deleteRange(p, p.rangeIn!, p.rangeOut!)); player.current?.seek(p.rangeIn!); say(`Deleted ${d.toFixed(1)} s from all tracks`); };
+  const speedPart = (v: number) => {
+    setSpeedMenu(false);
+    if (!hasRange) { say('Mark the part first: I at its start, O at its end (or Shift + drag on the time ruler).'); return; }
+    const { project, changed } = setSpeedRange(p, p.rangeIn!, p.rangeOut!, v);
+    if (!changed) { say('There is no video clip in the marked part.'); return; }
+    update(project);
+    say(v === 1 ? 'Marked part back to normal speed' : `Marked part now plays at ${v}×${v < 0.7 || v > 1.6 ? ' (its clip sound is muted)' : ''}`);
+  };
   const keepPart = () => { if (!hasRange) return; update(keepRange(p, p.rangeIn!, p.rangeOut!)); player.current?.seek(0); say('Kept only the marked part'); };
   const snapshot = async () => {
     const { w, h } = dims(p.aspect, 1080);
@@ -240,6 +251,18 @@ export default function App() {
             <button className="tb" onClick={setOut} title="Mark part end (O)">⇥<span>End</span></button>
             <button className="tb" onClick={delRange} disabled={!hasRange} title="Delete the marked part from all tracks (Shift+Del)">⌫<span>Cut part</span></button>
             <button className="tb" onClick={keepPart} disabled={!hasRange} title="Keep only the marked part">⬚<span>Keep part</span></button>
+            <span className="picker">
+              <button className="tb" onClick={() => setSpeedMenu((x) => !x)} title="Speed up or slow down only the marked part">⏩<span>Speed part</span></button>
+              {speedMenu && (
+                <div className="menu up" onMouseLeave={() => setSpeedMenu(false)}>
+                  {!hasRange && <div className="small muted" style={{ padding: '6px 10px' }}>Mark a part first (I / O)</div>}
+                  {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4].map((v) => (
+                    <button key={v} disabled={!hasRange} onClick={() => speedPart(v)}>{v === 1 ? 'Normal speed (1×)' : `${v}× ${v < 1 ? '— slow motion' : '— faster'}`}</button>
+                  ))}
+                </div>
+              )}
+            </span>
+            <button className="tb" onClick={() => setGridOpen(true)} title="Split screen: several videos at once in frames">▦<span>Split screen</span></button>
             {hasRange && <span className="small muted">{fmtTime(p.rangeIn!)}–{fmtTime(p.rangeOut!)}</span>}
             <span className="sep" />
             <button className="tb" onClick={() => { const o = newOverlay('title', time); update((c) => ({ ...c, overlays: [...c.overlays, o] })); setSel({ kind: 'overlay', id: o.id }); }} title="Add text at playhead (T)">🔤<span>Text</span></button>
@@ -288,6 +311,7 @@ export default function App() {
           </aside>
         </>
       )}
+      {gridOpen && <GridPicker store={store} time={time} onClose={() => setGridOpen(false)} onDone={(id) => { setGridOpen(false); setSel({ kind: 'scene', id }); say('Split screen added — change frames and design on the right.'); }} />}
       {drawer === 'export' && (
         <>
           <div className="drawer-bg" onClick={() => setDrawer(null)} />

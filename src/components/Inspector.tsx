@@ -8,6 +8,7 @@ import { More, Note } from './common';
 import type { Sel } from './MultiTimeline';
 import { useState } from 'react';
 import { FramePicker } from './FramePicker';
+import { GridSettings } from './GridPanel';
 
 const LOOKS: [LookPreset, string][] = [['none', 'Original'], ['vivid', 'Vivid'], ['warm', 'Warm'], ['cool', 'Cool'], ['bw', 'Black & white'], ['vintage', 'Vintage'], ['fade', 'Soft fade']];
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
@@ -20,6 +21,7 @@ export function Inspector({ store, sel, setSel, warnings, addFiles }: {
   if (sel?.kind === 'scene' && p.scenes.some((s) => s.id === sel.id)) {
     return (
       <div className="col" style={{ gap: 12 }}>
+        {p.scenes.find((s) => s.id === sel.id)?.kind === 'grid' && <GridSettings store={store} scene={p.scenes.find((s) => s.id === sel.id)!} />}
         <ClipSettings store={store} sceneId={sel.id} />
         <More label="Scene text & layout" open={p.scenes.find((s) => s.id === sel.id)?.kind !== 'moment'}>
           <SceneEditor store={store} sceneId={sel.id} warn={warnings.has(sel.id)} onSelect={(id) => setSel(id ? { kind: 'scene', id } : null)} addFiles={addFiles} />
@@ -66,18 +68,19 @@ function ClipSettings({ store, sceneId }: { store: Store; sceneId: string }) {
   const set = (patch: Partial<Scene>, key?: string) => update((c) => ({ ...c, scenes: c.scenes.map((x) => (x.id === s.id ? { ...x, ...patch } : x)) }), key ? `${s.id}-${key}` : undefined);
   const look: ClipLook = s.look ?? { brightness: 1, contrast: 1, saturation: 1, preset: 'none' };
   const setLook = (patch: Partial<ClipLook>, key: string) => set({ look: { ...look, ...patch } }, key);
-  const isVideo = m?.kind === 'video';
+  const isGrid = s.kind === 'grid';
+  const isVideo = isGrid ? (s.cells ?? []).some((c) => p.media.find((x) => x.id === c.mediaId)?.kind === 'video') : m?.kind === 'video';
   return (
     <div className="col" style={{ gap: 10 }}>
       <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h3 style={{ margin: 0 }}>Clip {i + 1}</h3>
+        <h3 style={{ margin: 0 }}>{isGrid ? 'Timing & look' : `Clip ${i + 1}`}</h3>
         <span className="small muted" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m?.name ?? s.kind}</span>
       </div>
       <div className="grid g2">
         <label className="field">Length (s)
           <input type="number" min={0.3} step={0.1} value={Math.round(s.duration * 100) / 100} onChange={(e) => set({ duration: Math.max(0.3, +e.target.value || 0.3) }, 'dur')} />
         </label>
-        {isVideo ? (
+        {isVideo && !isGrid ? (
           <label className="field">Starts at (s)
             <input type="number" min={0} step={0.1} value={Math.round((s.clipIn ?? 0) * 100) / 100} onChange={(e) => set({ clipIn: Math.max(0, Math.min(+e.target.value || 0, (m!.duration || 1) - 0.2)) }, 'in')} />
           </label>
@@ -90,11 +93,12 @@ function ClipSettings({ store, sceneId }: { store: Store; sceneId: string }) {
               {SPEEDS.map((v) => <option key={v} value={v}>{v === 1 ? 'Normal (1×)' : `${v}×${v < 1 ? ' slow motion' : ' fast'}`}</option>)}
             </select>
           </label>
-          <div className="row">
+          {!isGrid && <div className="row">
             <label className="row small"><input type="checkbox" checked={!!s.useClipAudio && !s.muted} disabled={!m?.hasAudio} onChange={(e) => set({ useClipAudio: e.target.checked, muted: !e.target.checked })} /> Clip sound {m?.hasAudio ? '' : '(none)'}</label>
             <label className="row small"><input type="checkbox" checked={!!s.duck} onChange={(e) => set({ duck: e.target.checked })} /> Dip music under it</label>
-          </div>
-          {s.useClipAudio && !s.muted && (
+          </div>}
+          {isGrid && <label className="row small"><input type="checkbox" checked={!s.muted} onChange={(e) => set({ muted: !e.target.checked })} /> Play frame sound (choose which frames above)</label>}
+          {!isGrid && s.useClipAudio && !s.muted && (
             <label className="field">Clip volume: {Math.round((s.volume ?? 1) * 100)}%
               <input type="range" min={0} max={2} step={0.05} value={s.volume ?? 1} onChange={(e) => set({ volume: +e.target.value }, 'vol')} />
             </label>
@@ -105,7 +109,7 @@ function ClipSettings({ store, sceneId }: { store: Store; sceneId: string }) {
         <label className="field">Fade in (s)<input type="number" min={0} max={5} step={0.1} value={s.fadeIn ?? 0} onChange={(e) => set({ fadeIn: Math.max(0, +e.target.value) }, 'fi')} /></label>
         <label className="field">Fade out (s)<input type="number" min={0} max={5} step={0.1} value={s.fadeOut ?? 0} onChange={(e) => set({ fadeOut: Math.max(0, +e.target.value) }, 'fo')} /></label>
       </div>
-      <div className="grid g2">
+      {!isGrid && <><div className="grid g2">
         <label className="field">Frame
           <select value={s.fit ?? 'fill'} onChange={(e) => set({ fit: e.target.value as any })}>
             <option value="fill">Fill (crop edges)</option><option value="fit">Fit whole picture</option>
@@ -121,7 +125,7 @@ function ClipSettings({ store, sceneId }: { store: Store; sceneId: string }) {
         <button className="btn small" onClick={() => setPicker(true)}>✂ Crop / 🧽 Remove watermark{s.crop || s.marks?.length ? ` (${[s.crop ? 'cropped' : '', s.marks?.length ? s.marks.length + ' box' : ''].filter(Boolean).join(', ')})` : ''}</button>
       )}
       {picker && <FramePicker store={store} sceneId={s.id} onClose={() => setPicker(false)} />}
-      <label className="row small"><input type="checkbox" checked={!!s.flip} onChange={(e) => set({ flip: e.target.checked })} /> Mirror (flip left–right)</label>
+      <label className="row small"><input type="checkbox" checked={!!s.flip} onChange={(e) => set({ flip: e.target.checked })} /> Mirror (flip left–right)</label></>}
       <label className="field">Colour look
         <select value={look.preset} onChange={(e) => setLook({ preset: e.target.value as LookPreset }, 'lookp')}>
           {LOOKS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
@@ -135,10 +139,10 @@ function ClipSettings({ store, sceneId }: { store: Store; sceneId: string }) {
         ))}
         <button className="btn small" onClick={() => set({ look: undefined })}>Reset colours</button>
       </More>
-      <div className="row">
+      {!isGrid && <div className="row">
         <button className="btn small" onClick={() => { const q = joinNext(p, s.id); if (q) update(q); else setMsg('Can only join with the next clip when it continues the same video.'); }}>⤝ Join with next</button>
         {isVideo && m?.hasAudio && <button className="btn small" onClick={() => { const q = detachAudio(p, s.id); if (q) { update(q); setMsg('Sound moved to the Voice track — you can now move, trim or fade it on its own.'); } else setMsg('Set speed to 1× first.'); }}>🔊 Detach sound</button>}
-      </div>
+      </div>}
       {msg && <Note>{msg}</Note>}
     </div>
   );

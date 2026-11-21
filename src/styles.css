@@ -268,3 +268,16 @@ label.row { flex-wrap: nowrap; }
 .pos-grid button { height: 20px; border: 1px solid var(--line); border-radius: 4px; background: #fff; cursor: pointer; }
 .pos-grid button.on, .pos-grid button:hover { background: var(--accent); border-color: var(--check); }
 .sep-v { width: 1px; height: 22px; background: var(--line); margin: 0 2px; }
+.menu.up { top: auto; bottom: 100%; left: 0; right: auto; }
+.menu button:disabled { opacity: .4; cursor: default; }
+.lay-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; margin: 6px 0 12px; }
+.lay-grid.compact { grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); margin: 0; }
+.lay-grid .choice { align-items: center; text-align: center; gap: 6px; }
+.lay-icon { position: relative; display: inline-block; background: #e5e7eb; border-radius: 3px; overflow: hidden; flex: none; }
+.lay-icon i { position: absolute; box-sizing: border-box; border: 1.5px solid #fff; background: #9ccfae; }
+.lay-icon.d-neon { background: #0b0b18; } .lay-icon.d-neon i { border-color: #00f0ff; background: #24304a; }
+.lay-icon.d-polaroid i { border: 2px solid #fff; border-bottom-width: 4px; background: #9ccfae; }
+.lay-icon.d-film { background: #111; } .lay-icon.d-film i { border-top: 3px dotted #ddd; border-bottom: 3px dotted #ddd; border-left: 1px solid #111; border-right: 1px solid #111; }
+.lay-icon.d-clean { background: #000; } .lay-icon.d-clean i { border: 1px solid #000; }
+.lay-icon.d-diagonal i { clip-path: polygon(8% 0, 100% 0, 92% 100%, 0 100%); }
+.lay-icon.d-circle i { border: 1.5px solid var(--check); }

@@ -24,6 +24,13 @@ export function buildPlan(p: Project): AudioPlan {
       const dur = Math.min(b?.duration ?? s.duration, total - starts[i]);
       clips.push({ mediaId: s.voiceId, at: starts[i] + 0.15, offset: 0, dur: Math.max(0, dur - 0.15), rate: 1, volume: 1, fadeIn: 0.05, fadeOut: 0.1, loop: false, speech: true, duck: false, fromScene: true });
     }
+    if (s.kind === 'grid') {
+      for (const c of s.cells ?? []) {
+        if (!c.sound || s.muted || media.get(c.mediaId)?.kind !== 'video') continue;
+        clips.push({ mediaId: c.mediaId, at: starts[i], offset: c.clipIn, dur: s.duration, rate: s.speed ?? 1, volume: (c.volume ?? 1) * (s.volume ?? 1), fadeIn: Math.max(0.04, s.fadeIn ?? 0), fadeOut: Math.max(0.04, s.fadeOut ?? 0), loop: false, speech: !!s.duck, duck: false, fromScene: true });
+      }
+      return;
+    }
     const clipId = s.mediaIds[0];
     if (s.useClipAudio && !s.muted && clipId && media.get(clipId)?.kind === 'video') {
       const rate = s.speed ?? 1;

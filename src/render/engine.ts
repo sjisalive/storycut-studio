@@ -759,7 +759,125 @@ function sceneCta(e: E) {
   }
 }
 
+// ---------------------------------------------------------------- split screen
+type R4 = [number, number, number, number];
+export function gridRects(layout: string, portrait: boolean): R4[] {
+  switch (layout) {
+    case '2v': return [[0, 0, 1, 0.5], [0, 0.5, 1, 0.5]];
+    case '3l': return portrait ? [[0, 0, 1, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]] : [[0, 0, 0.5, 1], [0.5, 0, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]];
+    case '3r': return portrait ? [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 1, 0.5]] : [[0, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0, 0.5, 1]];
+    case '3c': return portrait ? [[0, 0, 1, 1 / 3], [0, 1 / 3, 1, 1 / 3], [0, 2 / 3, 1, 1 / 3]] : [[0, 0, 1 / 3, 1], [1 / 3, 0, 1 / 3, 1], [2 / 3, 0, 1 / 3, 1]];
+    case '4': return [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]];
+    case '6': return portrait
+      ? [0, 1, 2].flatMap((r) => [0, 1].map((c) => [c / 2, r / 3, 1 / 2, 1 / 3] as R4))
+      : [0, 1].flatMap((r) => [0, 1, 2].map((c) => [c / 3, r / 2, 1 / 3, 1 / 2] as R4));
+    case 'pip': return [[0, 0, 1, 1], [0.62, 0.6, 0.33, 0.33]];
+    case 'pip2': return [[0, 0, 1, 1], [0.66, 0.06, 0.29, 0.29], [0.66, 0.62, 0.29, 0.29]];
+    default: return [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]]; // '2h'
+  }
+}
+export const gridCount = (layout: string) => gridRects(layout, false).length;
+
+function sceneGrid(e: E) {
+  const { ctx, W, H, u, scene, style } = e;
+  const c = style.colors;
+  const design = scene.frame ?? 'clean';
+  const layout = scene.layout ?? '2h';
+  const portrait = H > W * 1.1;
+  const rects = gridRects(layout, portrait);
+  const pip = layout.startsWith('pip');
+  // background
+  if (design === 'clean' || design === 'diagonal') { ctx.fillStyle = scene.border || '#000'; ctx.fillRect(0, 0, W, H); }
+  else if (design === 'neon') { ctx.fillStyle = '#05050b'; ctx.fillRect(0, 0, W, H); drawDecor(ctx, { ...style, shape: 'glass' }, W, H, e.lt, scene.id, 0.9); }
+  else if (design === 'film') { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H); }
+  else drawBackdrop(ctx, style, W, H, e.lt, scene.id, 0.8);
+  const gapDefault: Record<string, number> = { clean: 0.6, rounded: 2.2, polaroid: 3, neon: 2.6, diagonal: 0.8, circle: 2.5, tilted: 4, film: 3.2 };
+  const g = (scene.gap ?? gapDefault[design] ?? 1) * u;
+  const rad = (scene.radius ?? (design === 'rounded' ? 3 : design === 'neon' ? 2 : 0)) * u;
+  const border = scene.border ?? (design === 'neon' ? c.accent : design === 'polaroid' ? '#ffffff' : '');
+  const cells = scene.cells ?? [];
+  rects.forEach((r0, i) => {
+    const cell = cells[i];
+    let [rx, ry, rw, rh] = r0;
+    const isInset = pip && i > 0;
+    let x = rx * W + (rx === 0 && !isInset ? g : g / 2), y = ry * H + (ry === 0 && !isInset ? g : g / 2);
+    let w = rw * W - (rx === 0 && !isInset ? g : g / 2) - (rx + rw >= 0.999 && !isInset ? g : g / 2);
+    let h = rh * H - (ry === 0 && !isInset ? g : g / 2) - (ry + rh >= 0.999 && !isInset ? g : g / 2);
+    if (pip && i === 0) { x = 0; y = 0; w = W; h = H; }
+    if (design === 'film') { y += h * 0.07; h *= 0.86; }
+    // intro: frames pop in one after another
+    const k = clamp((e.lt - i * 0.12) / (0.45 / style.motion), 0, 1);
+    const ek = easeOutBack(k);
+    const sc = (pip && i === 0) || design === 'clean' || design === 'diagonal' ? 1 : 0.85 + 0.15 * ek;
+    const tilt = design === 'tilted' ? (i % 2 ? 1 : -1) * (2.5 + (i % 3)) * (Math.PI / 180) : design === 'polaroid' ? (i % 2 ? 1.2 : -1.2) * (Math.PI / 180) : 0;
+    ctx.save();
+    ctx.globalAlpha = (pip && i === 0) || design === 'clean' ? 1 : Math.min(1, k * 1.6);
+    ctx.translate(x + w / 2, y + h / 2); ctx.rotate(tilt); ctx.scale(sc, sc); ctx.translate(-(x + w / 2), -(y + h / 2));
+    // frame shape
+    const path = () => {
+      ctx.beginPath();
+      if (design === 'circle' && !(pip && i === 0)) {
+        const rr = Math.min(w, h) / 2;
+        ctx.arc(x + w / 2, y + h / 2, rr, 0, Math.PI * 2);
+      } else if (design === 'diagonal' && rects.length > 1 && !pip) {
+        const sk = Math.min(W, H) * 0.06; // slanted edges between neighbours
+        const left = rx > 0 ? sk : 0, right = rx + rw < 0.999 ? sk : 0;
+        ctx.moveTo(x + left, y); ctx.lineTo(x + w + right, y); ctx.lineTo(x + w - right, y + h); ctx.lineTo(x - left, y + h); ctx.closePath();
+      } else roundRect(ctx, x, y, w, h, isInset ? Math.max(rad, 1.2 * u) : rad);
+    };
+    if (design === 'polaroid' || design === 'tilted' || isInset) {
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 3 * u; ctx.shadowOffsetY = u * 0.8;
+      if (design === 'polaroid') { ctx.fillStyle = '#fff'; ctx.fillRect(x - 1.2 * u, y - 1.2 * u, w + 2.4 * u, h + 4.5 * u); }
+      else { path(); ctx.fillStyle = '#000'; ctx.fill(); }
+      ctx.restore();
+    }
+    ctx.save();
+    path();
+    ctx.clip();
+    if (cell?.mediaId) {
+      const keep = e.scene;
+      e.scene = { ...keep, fit: cell.fit ?? 'fill' };
+      cover(e, cell.mediaId, x, y, w, h, mediaTime(e, cell.mediaId, e.lt, cell.clipIn), cell.zoom ?? 1.02, 0, scene.id + i);
+      e.scene = keep;
+    } else {
+      ctx.fillStyle = hexA(c.bg2, 0.9); ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = hexA(c.text, 0.6); ctx.font = fontString(style.fontBody, 600, Math.max(12, Math.min(w, h) * 0.08));
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(`Frame ${i + 1}`, x + w / 2, y + h / 2);
+    }
+    ctx.restore();
+    // border / glow
+    if (border || design === 'circle' || isInset) {
+      ctx.save();
+      path();
+      ctx.lineWidth = design === 'neon' ? 0.5 * u : isInset ? 0.5 * u : 0.35 * u;
+      ctx.strokeStyle = border || (design === 'circle' ? c.accent : '#ffffff');
+      if (design === 'neon') { ctx.shadowColor = border || c.accent; ctx.shadowBlur = 2.5 * u; ctx.stroke(); ctx.shadowColor = c.accent2; }
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (design === 'film') {
+      ctx.fillStyle = '#e5e5e5';
+      const holeW = 1.6 * u, holeH = 1.1 * u;
+      for (let hx = x + u; hx < x + w - holeW; hx += 3.2 * u) {
+        ctx.fillRect(hx, y - h * 0.055, holeW, holeH);
+        ctx.fillRect(hx, y + h + h * 0.055 - holeH, holeW, holeH);
+      }
+    }
+    ctx.restore();
+  });
+  if (design === 'diagonal' && !pip && rects.length > 1) {
+    // accent line along each slanted cut
+    ctx.save(); ctx.strokeStyle = scene.border || c.accent; ctx.lineWidth = 0.6 * u;
+    const sk = Math.min(W, H) * 0.06;
+    for (const [rx, ry, rw, rh] of rects) {
+      if (rx + rw < 0.999) { const xx = (rx + rw) * W; ctx.beginPath(); ctx.moveTo(xx + sk, ry * H); ctx.lineTo(xx - sk, (ry + rh) * H); ctx.stroke(); }
+    }
+    ctx.restore();
+  }
+}
+
 const SCENE_FN: Record<Scene['kind'], (e: E) => void> = {
+  grid: sceneGrid,
   hook: sceneHook, montage: sceneMontage, speaker: sceneSpeaker, headline: sceneHeadline, item: sceneItem,
   steps: sceneSteps, stat: sceneStat, moment: sceneMoment, cta: sceneCta,
 };

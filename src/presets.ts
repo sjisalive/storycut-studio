@@ -156,7 +156,7 @@ export const stylePack = (id: string) => STYLE_PACKS.find((s) => s.id === id) ??
 
 export const SCENE_LABELS: Record<SceneKind, string> = {
   hook: 'Opening hook', montage: 'Quick montage', speaker: 'Speaker bite', headline: 'Headline card',
-  item: 'Item', steps: 'Steps / compare', stat: 'Big numbers', moment: 'Moment', cta: 'End card',
+  item: 'Item', steps: 'Steps / compare', stat: 'Big numbers', moment: 'Clip', cta: 'End card', grid: 'Split screen',
 };
 
 export const TRANSITION_LABELS: Record<TransitionKind, string> = {

@@ -1,7 +1,7 @@
 // Pure editing operations on a project: split, delete a part (ripple),
 // trim, merge clips, cut on beats, detach sound, music helpers.
-import type { AudioItem, MediaItem, Overlay, Project, Scene } from './types';
-import { defaultIn, timeline, OVERLAY_SIZE } from './render/engine';
+import type { AudioItem, FrameDesign, GridCell, GridLayout, MediaItem, Overlay, Project, Scene } from './types';
+import { defaultIn, gridCount, timeline, OVERLAY_SIZE } from './render/engine';
 import { uid } from './util';
 
 const EPS = 0.05;
@@ -44,6 +44,7 @@ function cutScene(s: Scene, local: number, media: MediaItem[]): [Scene, Scene] {
   const rate = s.speed ?? 1;
   const a: Scene = { ...s, duration: local, fadeOut: 0, transition: 'cut' };
   const b: Scene = { ...structuredClone(s), id: uid('s'), duration: s.duration - local, clipIn: effIn(s, media) + local * rate, fadeIn: 0, voiceId: undefined };
+  if (b.cells) b.cells = b.cells.map((c) => ({ ...c, clipIn: c.clipIn + local * rate }));
   return [a, b];
 }
 
@@ -156,6 +157,10 @@ export function trimScene(p: Project, sceneId: string, edge: 'start' | 'end', ne
         if (m?.kind === 'video' && s.kind === 'moment') d = Math.min(d, (m.duration - effIn(s, p.media)) / rate);
         return { ...s, duration: Math.round(d * 100) / 100 };
       }
+      if (s.cells) {
+        const shift = (s.duration - d) * rate;
+        return { ...s, duration: Math.round(d * 100) / 100, cells: s.cells.map((c) => ({ ...c, clipIn: Math.max(0, c.clipIn + shift) })) };
+      }
       let inT = effIn(s, p.media) + (s.duration - d) * rate;
       if (m?.kind === 'video') { if (inT < 0) { d += inT / rate; inT = 0; } }
       return { ...s, duration: Math.round(d * 100) / 100, clipIn: Math.max(0, inT) };
@@ -233,4 +238,97 @@ export function snap(t: number, pts: number[], tol: number) {
   let best = t, d = tol;
   for (const x of pts) { const dd = Math.abs(x - t); if (dd < d) { d = dd; best = x; } }
   return best;
+}
+
+
+/** Shift everything on the text / audio tracks (and captions) that starts at or after `from` by `by` seconds. */
+function shiftAfter(p: Project, from: number, by: number): Project {
+  if (Math.abs(by) < 1e-6) return p;
+  const mv = (t: number) => (t >= from - 1e-6 ? Math.max(0, t + by) : t);
+  return {
+    ...p,
+    overlays: p.overlays.map((o) => ({ ...o, at: mv(o.at) })),
+    audio: p.audio.map((a) => (a.toEnd && a.at < from ? a : { ...a, at: mv(a.at) })),
+    captions: p.captions.map((c) => (c.start >= from - 1e-6 ? { ...c, start: c.start + by, end: c.end + by, words: c.words?.map((w) => ({ ...w, t0: w.t0 + by, t1: w.t1 + by })) } : c)),
+  };
+}
+
+/**
+ * Change the speed of just the part between a and b (slow motion / fast forward).
+ * Clips are split at a and b; everything after the part moves to stay in sync.
+ * Sound in the part is muted when the speed is far from normal (it would sound odd).
+ */
+export function setSpeedRange(p: Project, a: number, b: number, speed: number): { project: Project; changed: number } {
+  let q = splitAt(p, a) ?? p;
+  q = splitAt(q, b) ?? q;
+  const { starts } = timeline(q);
+  let delta = 0, changed = 0;
+  const scenes = q.scenes.map((s, i) => {
+    const mid = starts[i] + s.duration / 2;
+    if (mid <= a || mid >= b) return s;
+    const hasVideo = (s.cells ?? []).some((c) => q.media.find((m) => m.id === c.mediaId)?.kind === 'video') || q.media.find((m) => m.id === s.mediaIds[0])?.kind === 'video';
+    if (!hasVideo || s.kind === 'montage') return s;
+    const src = s.duration * (s.speed ?? 1);
+    const dur = Math.max(0.1, Math.round((src / speed) * 1000) / 1000);
+    delta += dur - s.duration;
+    changed++;
+    const muteIt = speed < 0.7 || speed > 1.6;
+    return { ...s, speed, duration: dur, muted: muteIt ? true : s.muted };
+  });
+  const out = shiftAfter({ ...q, scenes }, b, delta);
+  return { project: { ...out, rangeIn: a, rangeOut: b + delta }, changed };
+}
+
+export const FRAME_DESIGNS: [FrameDesign, string][] = [
+  ['clean', 'Clean lines'], ['rounded', 'Rounded cards'], ['polaroid', 'Polaroid'], ['neon', 'Neon glow'],
+  ['diagonal', 'Diagonal cut'], ['circle', 'Circles'], ['tilted', 'Tilted collage'], ['film', 'Film strip'],
+];
+export const GRID_LAYOUTS: [GridLayout, string][] = [
+  ['2h', 'Side by side'], ['2v', 'Top / bottom'], ['3l', 'Big + 2'], ['3r', '2 + big'], ['3c', 'Three'], ['4', 'Four (2×2)'], ['6', 'Six'], ['pip', 'Picture in picture'], ['pip2', 'Main + 2 small'],
+];
+
+function makeCells(p: Project, layout: GridLayout, first: GridCell | undefined, others: string[]): GridCell[] {
+  const n = gridCount(layout);
+  const cells: GridCell[] = [];
+  if (first) cells.push(first);
+  for (const id of others) { if (cells.length >= n) break; if (!cells.some((c) => c.mediaId === id)) cells.push({ mediaId: id, clipIn: 0, sound: false }); }
+  // fill remaining frames with other videos from the media list
+  for (const m of p.media) {
+    if (cells.length >= n) break;
+    if (m.status === 'ready' && m.kind !== 'audio' && (m.role === 'clip' || m.role === 'photo') && !cells.some((c) => c.mediaId === m.id)) cells.push({ mediaId: m.id, clipIn: 0, sound: false });
+  }
+  if (cells.length && !cells.some((c) => c.sound)) {
+    const withSound = cells.find((c) => p.media.find((m) => m.id === c.mediaId)?.hasAudio);
+    if (withSound) withSound.sound = true;
+  }
+  return cells;
+}
+
+/** Turn the marked part into a split screen: the video already there becomes frame 1. */
+export function gridFromRange(p: Project, a: number, b: number, layout: GridLayout, design: FrameDesign, picks: string[] = []): { project: Project; id: string } {
+  let q = splitAt(p, a) ?? p;
+  q = splitAt(q, b) ?? q;
+  const { starts } = timeline(q);
+  const inside = q.scenes.map((s, i) => ({ s, i })).filter(({ s, i }) => starts[i] + s.duration / 2 > a && starts[i] + s.duration / 2 < b);
+  const firstScene = inside[0]?.s;
+  const firstMedia = firstScene ? q.media.find((m) => m.id === (firstScene.cells?.[0]?.mediaId ?? firstScene.mediaIds[0])) : undefined;
+  const first: GridCell | undefined = firstMedia && firstMedia.kind !== 'audio' ? { mediaId: firstMedia.id, clipIn: firstScene!.cells?.[0]?.clipIn ?? effIn(firstScene!, q.media), sound: !!firstMedia.hasAudio && !firstScene!.muted } : undefined;
+  const cells = makeCells(q, layout, first, picks);
+  const grid: Scene = { id: uid('s'), kind: 'grid', duration: Math.round((b - a) * 1000) / 1000, transition: 'cut', texts: {}, mediaIds: cells.map((c) => c.mediaId), layout, frame: design, cells, speed: 1 };
+  const scenes = [...q.scenes];
+  if (inside.length) scenes.splice(inside[0].i, inside.length, grid);
+  else scenes.push(grid);
+  return { project: { ...q, scenes, rangeIn: undefined, rangeOut: undefined }, id: grid.id };
+}
+
+/** Insert a new split screen after the clip under the playhead. */
+export function insertGrid(p: Project, at: number, layout: GridLayout, design: FrameDesign, picks: string[] = [], dur = 5): { project: Project; id: string } {
+  const cells = makeCells(p, layout, undefined, picks);
+  const vids = cells.map((c) => p.media.find((m) => m.id === c.mediaId)).filter((m) => m?.kind === 'video').map((m) => m!.duration);
+  const d = vids.length ? Math.max(2, Math.min(dur * 2, Math.min(...vids))) : dur;
+  const grid: Scene = { id: uid('s'), kind: 'grid', duration: Math.round(d * 100) / 100, transition: 'cut', texts: {}, mediaIds: cells.map((c) => c.mediaId), layout, frame: design, cells, speed: 1 };
+  const hit = sceneAt(p, at);
+  const scenes = [...p.scenes];
+  scenes.splice(hit ? hit.i + 1 : scenes.length, 0, grid);
+  return { project: { ...p, scenes }, id: grid.id };
 }

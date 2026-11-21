@@ -49,7 +49,7 @@ export interface Bite {
 
 export type SceneKind =
   | 'hook' | 'montage' | 'speaker' | 'headline' | 'item'
-  | 'steps' | 'stat' | 'moment' | 'cta';
+  | 'steps' | 'stat' | 'moment' | 'cta' | 'grid';
 
 export type TransitionKind = 'cut' | 'dissolve' | 'wipe' | 'zoom' | 'slide' | 'flash';
 
@@ -95,7 +95,19 @@ export interface Scene {
   look?: ClipLook;
   crop?: { l: number; r: number; t: number; b: number }; // fractions of the source frame cut from each side
   marks?: MarkBox[]; // watermark / logo areas to remove or blur
+  // ---- split-screen (kind 'grid'): several videos playing at once, one per frame
+  layout?: GridLayout;
+  cells?: GridCell[];
+  gap?: number; // space between frames, % of the short side
+  radius?: number; // rounded corners, % of the short side
+  border?: string; // frame border colour ('' = none)
+  frame?: FrameDesign;
 }
+
+export type FrameDesign = 'clean' | 'rounded' | 'polaroid' | 'neon' | 'diagonal' | 'circle' | 'tilted' | 'film';
+
+export type GridLayout = '2h' | '2v' | '3l' | '3c' | '3r' | '4' | '6' | 'pip' | 'pip2';
+export interface GridCell { mediaId: string; clipIn: number; sound?: boolean; volume?: number; fit?: 'fill' | 'fit'; zoom?: number }
 
 /** An area of the source frame (fractions 0..1) to hide: smooth fill from the surroundings, or blur. */
 export interface MarkBox { id: string; x: number; y: number; w: number; h: number; mode: 'fill' | 'blur' }
