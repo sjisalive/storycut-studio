@@ -332,3 +332,94 @@ export function insertGrid(p: Project, at: number, layout: GridLayout, design: F
   scenes.splice(hit ? hit.i + 1 : scenes.length, 0, grid);
   return { project: { ...p, scenes }, id: grid.id };
 }
+
+// ------------------------------------------------------------ beat shuffle
+export interface ShufflePiece { mediaId: string; from: number; to: number; image: boolean; fit?: 'fill' | 'fit' }
+export type ShuffleRhythm = 1 | 2 | 4 | 'mix';
+export interface ShuffleOpts { rhythm: ShuffleRhythm; length: 'same' | 'music' | number; seed: string; keepEnds: boolean }
+
+/** What can be shuffled: the clips now on the video track, or chosen files from Media. */
+export function shufflePool(p: Project, ids?: string[]): ShufflePiece[] {
+  const media = new Map(p.media.map((m) => [m.id, m]));
+  const pool: ShufflePiece[] = [];
+  if (ids?.length) {
+    for (const id of ids) {
+      const m = media.get(id);
+      if (!m || m.status !== 'ready' || m.kind === 'audio') continue;
+      if (m.kind === 'image') pool.push({ mediaId: id, from: 0, to: 3, image: true });
+      else pool.push({ mediaId: id, from: Math.min(0.2, m.duration * 0.05), to: Math.max(0.3, m.duration - 0.2), image: false, fit: mismatch(p, m) ? 'fit' : undefined });
+    }
+    return pool;
+  }
+  for (const s of p.scenes) {
+    if (s.kind !== 'moment' && s.kind !== 'item' && s.kind !== 'speaker') continue;
+    const m = media.get(s.mediaIds[0]);
+    if (!m || m.kind === 'audio') continue;
+    if (m.kind === 'image') { pool.push({ mediaId: m.id, from: 0, to: s.duration, image: true, fit: s.fit }); continue; }
+    const from = s.clipIn ?? defaultIn(m);
+    pool.push({ mediaId: m.id, from, to: Math.min(m.duration, from + s.duration * (s.speed ?? 1)), image: false, fit: s.fit });
+  }
+  return pool;
+}
+
+const isDesigned = (s: Scene | undefined) => !!s && s.kind !== 'moment' && s.kind !== 'grid' && s.kind !== 'item' && s.kind !== 'speaker';
+
+/**
+ * Cut the pool into beat-long pieces, mix them in a random (but repeatable per seed) order
+ * and lay them on the video track so every cut lands on a beat.
+ */
+export function beatShuffle(p: Project, pool: ShufflePiece[], o: ShuffleOpts): { project: Project; pieces: number } {
+  if (!pool.length || p.beats.length < 2) return { project: p, pieces: 0 };
+  const rnd = seededRandom(o.seed);
+  const { total } = timeline(p);
+  const music = mainMusic(p);
+  const musicLen = music ? (music.toEnd ? Math.max(total, (p.media.find((m) => m.id === music.mediaId)?.duration ?? total) - music.offset + music.at) : music.at + music.dur) : total;
+  const length = o.length === 'same' ? total : o.length === 'music' ? musicLen : o.length;
+  const nearBeat = (t: number) => p.beats.reduce((best, b) => (Math.abs(b - t) < Math.abs(best - t) ? b : best), p.beats[0]);
+  let intro = o.keepEnds && isDesigned(p.scenes[0]) ? p.scenes[0] : undefined;
+  let outro = o.keepEnds && p.scenes.length > 1 && isDesigned(p.scenes[p.scenes.length - 1]) ? p.scenes[p.scenes.length - 1] : undefined;
+  // the kept opening / end card meet the music on a beat too
+  if (intro) { const e = nearBeat(intro.duration); intro = { ...intro, duration: Math.round((e > 1 ? e : intro.duration) * 1000) / 1000 }; }
+  const start = intro ? intro.duration : 0;
+  let end = Math.max(start + 1, length - (outro ? outro.duration : 0));
+  if (outro) { const e = nearBeat(end); if (e > start + 1 && length - e > 1) end = e; outro = { ...outro, duration: Math.round((length - end) * 1000) / 1000 }; }
+  const beats = p.beats.filter((b) => b > start + 0.25 && b < end - 0.25);
+  // slot boundaries on beats
+  const marks = [start];
+  let k = 0;
+  while (k < beats.length) {
+    const step = o.rhythm === 'mix' ? [1, 2, 2, 2, 4][Math.floor(rnd() * 5)] : o.rhythm;
+    k += step;
+    const b = beats[Math.min(k, beats.length) - 1];
+    if (b !== undefined && b - marks[marks.length - 1] > 0.2) marks.push(b);
+  }
+  if (end - marks[marks.length - 1] > 0.3) marks.push(end); else marks[marks.length - 1] = end;
+  const uses = new Map<number, number>();
+  let prev = '';
+  const scenes: Scene[] = [];
+  for (let i = 0; i < marks.length - 1; i++) {
+    const d = marks[i + 1] - marks[i];
+    let cands = pool.map((x, j) => ({ x, j })).filter(({ x }) => x.image || x.to - x.from >= d - 1e-3);
+    if (!cands.length) cands = pool.map((x, j) => ({ x, j })).sort((a, b) => (b.x.to - b.x.from) - (a.x.to - a.x.from)).slice(0, 1);
+    const notSame = cands.filter(({ x }) => x.mediaId !== prev);
+    if (notSame.length) cands = notSame;
+    const least = Math.min(...cands.map(({ j }) => uses.get(j) ?? 0));
+    const fresh = cands.filter(({ j }) => (uses.get(j) ?? 0) === least);
+    const pick = fresh[Math.floor(rnd() * fresh.length)];
+    uses.set(pick.j, least + 1);
+    prev = pick.x.mediaId;
+    const room = Math.max(0, pick.x.to - pick.x.from - d);
+    scenes.push({
+      id: uid('s'), kind: 'moment', duration: Math.round(d * 1000) / 1000, transition: 'cut', texts: {}, mediaIds: [pick.x.mediaId],
+      clipIn: pick.x.image ? 0 : Math.round((pick.x.from + rnd() * room) * 1000) / 1000, useClipAudio: false, speed: 1, fit: pick.x.fit,
+    });
+  }
+  const all = [...(intro ? [intro] : []), ...scenes, ...(outro ? [outro] : [])];
+  return { project: { ...p, scenes: all, snapToBeats: true }, pieces: scenes.length };
+}
+
+function seededRandom(seed: string) {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+  return () => { h += 0x6d2b79f5; let t = h; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}

@@ -9,10 +9,11 @@ import { timeline } from '../render/engine';
 import { download, fmtTime, uid } from '../util';
 import { Note, Thumb, statusTag } from './common';
 
-export function MediaBin({ store, addFiles, time, onCompress }: {
+export function MediaBin({ store, addFiles, time, onCompress, onShuffle }: {
   store: Store; time: number;
   addFiles: (f: (File | { blob: Blob; name: string; role?: MediaRole })[]) => Promise<string[]>;
   onCompress: (mediaId: string) => void;
+  onShuffle?: (ids: string[]) => void;
 }) {
   const { project: p, update } = store;
   const input = useRef<HTMLInputElement>(null);
@@ -115,6 +116,7 @@ export function MediaBin({ store, addFiles, time, onCompress }: {
               if (p.scenes.length && !confirm('Replace the video track with a beat montage? (Undo is available)')) return;
               update(beatMontage(p, picked, everyN, p.targetLength)); setMsg(`Beat montage made: a new clip every ${everyN} beat(s), ${p.targetLength} s long.`);
             }}>🥁 Beat montage</button>
+            <button className="btn small" disabled={!p.beats.length} onClick={() => onShuffle?.(picked)} title="Cut these clips on the beats in a random order">🔀 Beat shuffle</button>
             <select value={everyN} onChange={(e) => setEveryN(+e.target.value)} style={{ width: 'auto' }} className="small">
               {[1, 2, 4, 8].map((n) => <option key={n} value={n}>every {n} beat{n > 1 ? 's' : ''}</option>)}
             </select>

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { Store } from '../store';
 import type { CaptionStyle, MediaRole, MusicMood, Overlay } from '../types';
-import { cutOnBeats, mainMusic, newOverlay, setMusic } from '../edit';
+import { cutOnBeats, mainMusic, newOverlay, setMusic, type ShuffleOpts } from '../edit';
 import { autoCaptions, captionsFromScenes, type WhisperSize } from '../audio/captions';
 import { synthMusic } from '../audio/synth';
 import { ASPECTS, STYLE_PACKS } from '../presets';
@@ -79,7 +79,9 @@ export function TextPanel({ store, time, setSel }: { store: Store; time: number;
   );
 }
 
-export function AudioPanel({ store, time, addFiles, sel, beatsInfo }: { store: Store; time: number; addFiles: AddFiles; sel: Sel; beatsInfo: string }) {
+export interface ShuffleCtl { opts: Omit<ShuffleOpts, 'seed'>; setOpts: (o: Omit<ShuffleOpts, 'seed'>) => void; run: (o?: { fresh?: boolean }) => void; count: number }
+
+export function AudioPanel({ store, time, addFiles, sel, beatsInfo, shuffle }: { store: Store; time: number; addFiles: AddFiles; sel: Sel; beatsInfo: string; shuffle?: ShuffleCtl }) {
   const { project: p, update } = store;
   const [mood, setMood] = useState<MusicMood>(p.style.mood);
   const [making, setMaking] = useState(false);
@@ -173,6 +175,30 @@ export function AudioPanel({ store, time, addFiles, sel, beatsInfo }: { store: S
         <label className="row small" style={{ marginTop: 6 }}><input type="checkbox" checked={p.snapToBeats} onChange={(e) => update({ snapToBeats: e.target.checked })} /> Snap scene ends & montage cuts to beats</label>
         {!p.beats.length && <p className="small muted">Add music first — beats are found automatically.</p>}
       </div>
+      {shuffle && (
+        <div className="card tight">
+          <b className="small">🔀 Beat shuffle</b>
+          <p className="small muted" style={{ margin: '4px 0 6px' }}>Cuts the clips on your video track into beat-long pieces and mixes them in a new order, every cut on a beat. Not happy? Shuffle again.</p>
+          <div className="grid g2">
+            <label className="field">Cut every
+              <select value={String(shuffle.opts.rhythm)} onChange={(e) => shuffle.setOpts({ ...shuffle.opts, rhythm: e.target.value === 'mix' ? 'mix' : (+e.target.value as 1 | 2 | 4) })}>
+                <option value="1">1 beat (fast)</option><option value="2">2 beats</option><option value="4">4 beats (calm)</option><option value="mix">Mixed (lively)</option>
+              </select>
+            </label>
+            <label className="field">Length
+              <select value={String(shuffle.opts.length)} onChange={(e) => { const v = e.target.value; shuffle.setOpts({ ...shuffle.opts, length: v === 'same' || v === 'music' ? v : +v }); }}>
+                <option value="same">Same as now</option><option value="music">Whole song</option><option value="15">15 s</option><option value="30">30 s</option><option value="60">60 s</option>
+              </select>
+            </label>
+          </div>
+          <label className="row small" style={{ marginTop: 6 }}><input type="checkbox" checked={shuffle.opts.keepEnds} onChange={(e) => shuffle.setOpts({ ...shuffle.opts, keepEnds: e.target.checked })} /> Keep the opening title & end card in place</label>
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="btn small primary" disabled={!p.beats.length} onClick={() => shuffle.run()}>🔀 {shuffle.count ? 'Shuffle again' : 'Shuffle to the beat'}</button>
+            {shuffle.count > 0 && <button className="btn small" onClick={() => shuffle.run({ fresh: true })} title="Use what is on the video track now as the new set of clips">Start from current track</button>}
+          </div>
+          {shuffle.count > 0 && <p className="small muted" style={{ marginTop: 6 }}>Mix {shuffle.count}. Each new mix uses your original clips. Ctrl+Z steps back to earlier mixes.</p>}
+        </div>
+      )}
       <div className="card tight">
         <b className="small">Voiceover</b>
         <div className="row" style={{ marginTop: 6 }}>

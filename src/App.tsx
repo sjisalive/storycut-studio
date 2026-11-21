@@ -10,7 +10,7 @@ import { ASPECTS } from './presets';
 import { renderFrame, timeline } from './render/engine';
 import { dims } from './export/exporter';
 import { ExactRuntime } from './export/runtime';
-import { addClips, deleteRange, keepRange, mainMusic, migrate, newOverlay, setSpeedRange, splitAt } from './edit';
+import { addClips, beatShuffle, deleteRange, keepRange, mainMusic, migrate, newOverlay, setSpeedRange, shufflePool, splitAt, type ShuffleOpts, type ShufflePiece } from './edit';
 import { GridPicker } from './components/GridPanel';
 import { download, fmtTime, uid } from './util';
 import { Player, type PlayerHandle } from './components/Player';
@@ -56,6 +56,10 @@ export default function App() {
   const [busy, setBusy] = useState('');
   const [speedMenu, setSpeedMenu] = useState(false);
   const [gridOpen, setGridOpen] = useState(false);
+  const [shuffleOpts, setShuffleOpts] = useState<Omit<ShuffleOpts, 'seed'>>({ rhythm: 2, length: 'same', keepEnds: true });
+  const shufflePoolRef = useRef<ShufflePiece[] | null>(null);
+  const [shuffleCount, setShuffleCount] = useState(0);
+  useEffect(() => { shufflePoolRef.current = null; setShuffleCount(0); }, [p.id]);
   const dirty = useRef(false);
   const { total } = timeline(p);
   // Test hook (only with ?test in the address) so automated checks can read the project.
@@ -145,6 +149,22 @@ export default function App() {
     update(project);
     say(v === 1 ? 'Marked part back to normal speed' : `Marked part now plays at ${v}×${v < 0.7 || v > 1.6 ? ' (its clip sound is muted)' : ''}`);
   };
+  /** Cut on the beats and mix the pieces. Re-running reuses the original clips, so each try is a fresh mix. */
+  const shuffle = (opts: { fresh?: boolean; ids?: string[] } = {}) => {
+    if (!p.beats.length) { say('Add music first — the shuffle follows its beats (Audio tab).'); return; }
+    if (opts.fresh || opts.ids || !shufflePoolRef.current) {
+      const pool = shufflePool(p, opts.ids);
+      if (!pool.length) { say(opts.ids ? 'Select video clips or photos first.' : 'Put clips on the video track first (or select clips in Media).'); return; }
+      shufflePoolRef.current = pool;
+      setShuffleCount(0);
+    }
+    const r = beatShuffle(p, shufflePoolRef.current!, { ...shuffleOpts, seed: Math.random().toString(36) });
+    if (!r.pieces) { say('No beats found in the chosen length.'); return; }
+    update(r.project);
+    setShuffleCount((n) => n + 1);
+    player.current?.seek(0);
+    say(`Mix ${shuffleCount + 1}: ${r.pieces} pieces cut on the beat. Not happy? Press 🔀 again · Ctrl+Z goes back.`);
+  };
   const keepPart = () => { if (!hasRange) return; update(keepRange(p, p.rangeIn!, p.rangeOut!)); player.current?.seek(0); say('Kept only the marked part'); };
   const snapshot = async () => {
     const { w, h } = dims(p.aspect, 1080);
@@ -224,9 +244,9 @@ export default function App() {
             ))}
           </div>
           <div className="tab-body">
-            {tab === 'media' && <MediaBin store={store} addFiles={addFiles} time={time} onCompress={(id) => { const m = p.media.find((x) => x.id === id); if (m) { setQuick(quickProject(p, m)); setDrawer('export'); } }} />}
+            {tab === 'media' && <MediaBin store={store} addFiles={addFiles} time={time} onShuffle={(ids) => shuffle({ ids })} onCompress={(id) => { const m = p.media.find((x) => x.id === id); if (m) { setQuick(quickProject(p, m)); setDrawer('export'); } }} />}
             {tab === 'text' && <TextPanel store={store} time={time} setSel={setSel} />}
-            {tab === 'audio' && <AudioPanel store={store} time={time} addFiles={addFiles} sel={sel} beatsInfo={beatsInfo} />}
+            {tab === 'audio' && <AudioPanel store={store} time={time} addFiles={addFiles} sel={sel} beatsInfo={beatsInfo} shuffle={{ opts: shuffleOpts, setOpts: setShuffleOpts, run: shuffle, count: shuffleCount }} />}
             {tab === 'style' && <StylePanel store={store} />}
           </div>
         </aside>
@@ -263,6 +283,7 @@ export default function App() {
               )}
             </span>
             <button className="tb" onClick={() => setGridOpen(true)} title="Split screen: several videos at once in frames">▦<span>Split screen</span></button>
+            <button className="tb" onClick={() => shuffle()} disabled={!p.beats.length} title={p.beats.length ? 'Cut clips on the beats and mix them; press again for a new mix' : 'Add music first'}>🔀<span>{shuffleCount ? 'Shuffle again' : 'Beat shuffle'}</span></button>
             {hasRange && <span className="small muted">{fmtTime(p.rangeIn!)}–{fmtTime(p.rangeOut!)}</span>}
             <span className="sep" />
             <button className="tb" onClick={() => { const o = newOverlay('title', time); update((c) => ({ ...c, overlays: [...c.overlays, o] })); setSel({ kind: 'overlay', id: o.id }); }} title="Add text at playhead (T)">🔤<span>Text</span></button>
