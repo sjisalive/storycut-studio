@@ -9,6 +9,7 @@ import { synthMusic } from './audio/synth';
 import { detectBeats, loopBeats } from './audio/beats';
 import { getAudioBuffer } from './media';
 import { seeded, uid } from './util';
+import { musicItem } from './edit';
 
 interface TemplateDef {
   id: string; name: string; type: VideoTypeId; style: string; aspect: AspectKey; lang: LangCode; lang2?: LangCode;
@@ -166,7 +167,7 @@ export async function buildTemplate(id: string, onStatus?: (s: string) => void):
   const mm = await readMedia(music, `music-${p.style.mood}.wav`, { role: 'music', placeholder: true });
   media.push(mm);
   p.media = media;
-  p.musicId = mm.id;
+  p.audio = [musicItem(mm.id, 0.8)];
   const buf = await getAudioBuffer(mm.id);
   if (buf) { const det = detectBeats(buf); p.beats = loopBeats(det.beats, buf.duration, 200); }
   p.scenes = assemble(p);

@@ -39,33 +39,70 @@ npm run build      # production build in dist/
 npm run preview    # serve the production build
 ```
 
-## 3. How to use it
+## 3. How to use
 
-| Step | What you do |
+Everything is on **one screen**, like a desktop video editor. Nothing is step by step.
+
+```
+┌ Media / Text / Audio / Style ┐┌──────── Preview ────────┐┌ Settings for what you selected ┐
+│ drop files, ＋ to timeline    ││ ▶ play · scrub           ││ clip / text / sound options     │
+│ merge, beat montage, compress ││ ✂ Split  🗑 Delete  ⇤ ⇥  ││ speed, volume, fades, crop,     │
+│ text presets, captions        ││ Cut part  Keep part  📷  ││ watermark remover, colour look  │
+└───────────────────────────────┘└──────────────────────────┘└─────────────────────────────────┘
+┌ Timeline — tracks run in parallel ─────────────────────────────────────────────────────────┐
+│ 🎬 Video   clips & designed scenes (drag to reorder, drag edges to trim)                     │
+│ 🔤 Text    titles, lower thirds, subtitles, tags, logos (drag to move / resize)             │
+│ 🎵 Music   background music with fades and auto-ducking; green ticks = detected beats       │
+│ 🎙 Voice   voiceovers, sound effects, detached clip sound                                   │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Editing tools
+| Tool | How |
 |---|---|
-| 1 Type | Pick a video type (Promo, Highlights, Showcase/List, Story/Impact, Announcement/Invite, Tutorial/Steps, Slideshow/Memories, Custom), **or open one of the 8 ready examples**. |
-| 2 Format | Choose the shape (16:9, 9:16, 1:1, 4:5), length (15 s to 3 min), language plus an optional second-language line, a style pack and the pace (Calm to Energetic). Save or apply **My brand** (logo, colours, fonts). |
-| 3 Media | Drop videos, photos, logos, music and voice clips. Each row shows a thumbnail, duration and a Ready/Reading/Error tag. No music? Use **Make a simple music bed**. |
-| 4 Content | Fill the table. Each row becomes one scene. Columns: Title, Subtitle, Highlight (`₹499`, `20 km`, `4.8★`, `Step 2`), Media, Badge. Paste from Excel/Sheets with **Ctrl+V** or import a CSV. Also edit the opening lines, main message and end card (website, phone, date & venue, social handles, QR code, logo, person cut-out). |
-| 5 Speakers | Optional. Mark in/out points on a talking-head clip and type 2–4 key words. They fly in beside the speaker, and the music dips under the voice. |
-| 6 Preview | Real-time preview with sound. Click a scene to edit it, drag scenes to reorder, and drag a scene's right edge to change its length. Use **Shuffle style** for a new look, record voiceovers per scene, and add captions. |
-| 7 Export | Choose 1080p High, 720p Balanced or Small file (for WhatsApp/email). You can also tick extra shapes, such as a 9:16 version of a 16:9 project. Text repositions automatically. Extras: thumbnail PNG, `.srt` captions and a 6-second GIF. |
+| **Merge** clips | Media → tick clips → *Merge onto timeline*, or ＋ on each, or drag a file onto the timeline |
+| **Cut / split** | Put the playhead inside a clip → **✂ Split** or `S` |
+| **Select a part & delete** | `I` (start) and `O` (end), or **Shift + drag** on the time ruler → **Cut part** (`Shift+Del`). This removes the part from all tracks and closes the gap. **Keep part** does the opposite. |
+| **Trim** | Drag either edge of a clip, text or sound |
+| **Delete / duplicate** | Select it → `Del` / `Ctrl+D` |
+| **Add music** | Media → ＋ on a music file (or Audio → Background music). There is also *Make a music bed* if you have no music. |
+| **Fade music** | Audio tab → Fade in / Fade out, or select the music block. Fades show as shading on the block. |
+| **Auto-ducking** | Music dips under voiceovers, speaker clips and any clip with *Dip music under it* |
+| **Cut on the beat** | Audio → *Cut on the beat* (selected clip or all clips, every 1/2/4/8 beats). Media → tick clips → **Beat montage** builds a whole edit on the beat. Snap also catches beats. |
+| **Compress** | Export → *Compress to a file size* (e.g. 16 MB for WhatsApp, 25 MB for email), or Media → ⋯ → *Compress this video* for a single file |
+| **Crop** | Select clip → *Crop / Remove watermark* → Left / Right / Top / Bottom, or *Crop to 16:9 / 9:16 shape* |
+| **Watermark / logo remover** | Same window → drag a box over the logo → *Remove (fill from surroundings)* or *Blur*. *Apply to all clips from this file* copies the boxes. |
+| **Speed** | 0.25× slow motion up to 4× fast |
+| **Clip sound** | On/off, volume 0–200 %, *Detach sound* (moves it to the Voice track to trim/fade separately) |
+| **Fade in / out (video)** | From and to black, per clip |
+| **Fit / fill, rotate, mirror** | Fit shows the whole picture on a blurred background, which is useful for vertical clips in a wide video |
+| **Colour look** | Vivid, Warm, Cool, B&W, Vintage, Soft fade, plus brightness, contrast and saturation |
+| **Text & logos** | Text tab or `T`: big title, lower third, subtitle box, tag, plain text. Each has position, size, colours and animation (fade/pop/slide/word-by-word). Media → ⋯ → *Put on top as logo* for a watermark-style logo. |
+| **Captions** | Text tab → *From speech* (Whisper in the browser) or *From scene text*. Four caption styles, `.srt` export. |
+| **Voiceover** | Audio → *Record at playhead* |
+| **Frame grab** | 📷 saves the current frame as a PNG |
+| **Save sound** | Media → ⋯ → *Save its sound (WAV)*, or Export → *Sound only* |
+| **Remove background** | Media → ⋯ → *Remove background (cut-out)* |
+| **Undo / redo** | `Ctrl+Z` / `Ctrl+Shift+Z`, with unlimited steps for the session |
+
+**Shortcuts:** `Space` play/pause · `S` split · `I`/`O` mark part · `Shift+Del` cut part · `Del` delete · `Ctrl+D` duplicate · `T` add title · `←`/`→` one frame (`Shift` = 1 s) · `+`/`−` or `Ctrl+wheel` zoom timeline · `Esc` clear selection.
+
+### ✨ Auto video
+Opens one page with the video type, ready examples, shape/length/language/style/brand, the content list (paste from Excel or import a CSV), opening and ending text and speaker bites. **Make my video** builds the video track from all of that. Your text, music and voice tracks stay, and you can then edit everything with the tools above.
 
 **Text colours:** in any heading, `*word*` uses the accent colour and `_word_` the second accent.
-**Shortcuts (Preview):** Space play/pause · ← → 1 s (Shift = 5 s) · `[` `]` previous/next scene · Ctrl+D duplicate · Del delete · Ctrl+Z / Ctrl+Shift+Z undo/redo.
 
-### CSV / Excel columns
-The header row is optional. If you include one, these names are recognised:
-`Title, Subtitle, Highlight, Badge, Media, Second`. "Media" is a file name you already added in step 3. Without a header, the column order is the same as listed.
+### Export
+1080p / 720p / Small file presets, or **compress to a target size**. Options: *only the marked part*, and extra versions in other shapes (16:9, 9:16, 1:1, 4:5) with text repositioned. Extras: thumbnail PNG, `.srt`, 6-second GIF, sound-only WAV.
 
 ### Saving projects
 - Projects **autosave in this browser** (IndexedDB) and are listed under 📁 Projects.
-- **Save project file** writes a single `.storycut` file with your media included. It uses the File System Access API where available and a normal download otherwise. Open it on any other computer with **Open project file**.
-- **Save as template** keeps the look and scene plan, so the next video only needs a new list and new clips.
+- **Save project file** writes one `.storycut` file with your media included. Open it on any other computer with **Open project file**.
+- **Save as template** keeps the look and scene plan for the next video.
 
 ## 4. The 8 demo projects
 
-They are on step 1 under "Or start from a ready example". Placeholder photos and music are generated in the browser, so they work offline. Each one exports a 30-second sample:
+Open them from **✨ Auto video**. Placeholder photos and music are generated in the browser, so they work offline. Each one exports a 30-second sample:
 
 | Example | Type | Shape | Style |
 |---|---|---|---|
@@ -84,6 +121,7 @@ They are on step 1 under "Or start from a ready example". Placeholder photos and
 src/
   App.tsx                 stepper, media import, autosave, shortcuts
   assemble.ts             "Make my video": scene plan, fit-to-length, beat snapping
+  edit.ts                 split, ripple delete of a part, trim, join, cut on beats, beat montage, detach sound
   presets.ts              video types, style packs, languages, fonts
   render/engine.ts        canvas renderer: all scene blocks, transitions, captions
   render/text.ts          text fitting & Indic-safe drawing, number count-up
@@ -97,7 +135,7 @@ src/
   export/exporter.ts      WebCodecs H.264 + AAC → MP4 (mp4-muxer), fallback, PNG, GIF
   projects.ts             IndexedDB save/load, .storycut files, brand kit
   templates.ts            the 8 demo projects
-  components/             UI for each step, player, timeline, scene editor
+  components/             editor workspace: media bin, multi-track timeline, inspector, crop & watermark picker, export
 ```
 
 ### Technical notes

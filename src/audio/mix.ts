@@ -1,58 +1,79 @@
-// Audio plan shared by live preview and export: music (looped, faded, ducked
-// under speech), per-scene voiceovers and speaker-bite sound.
+// Audio plan shared by live preview and export. Everything plays in parallel:
+// clip sound from the video track, per-scene voiceovers, and any number of
+// music / voice / sound items on the audio tracks — each with its own volume
+// and fades. Music marked "duck" dips automatically under speech.
 import type { Project } from '../types';
 import { getAudioBuffer, cachedAudio } from '../media';
-import { timeline } from '../render/engine';
+import { timeline, defaultIn } from '../render/engine';
 import { normaliseLoudness } from './loudness';
 
-export interface PlanClip { mediaId: string; at: number; offset: number; dur: number; speech: boolean }
-export interface AudioPlan { clips: PlanClip[]; musicId?: string; total: number; speech: [number, number][] }
+export interface PlanClip {
+  mediaId: string; at: number; offset: number; dur: number; rate: number;
+  volume: number; fadeIn: number; fadeOut: number; loop: boolean;
+  speech: boolean; duck: boolean; fromScene?: boolean;
+}
+export interface AudioPlan { clips: PlanClip[]; total: number; speech: [number, number][]; duckLevel: number }
 
 export function buildPlan(p: Project): AudioPlan {
   const { starts, total } = timeline(p);
+  const media = new Map(p.media.map((m) => [m.id, m]));
   const clips: PlanClip[] = [];
   p.scenes.forEach((s, i) => {
     if (s.voiceId) {
       const b = cachedAudio(s.voiceId);
       const dur = Math.min(b?.duration ?? s.duration, total - starts[i]);
-      clips.push({ mediaId: s.voiceId, at: starts[i] + 0.15, offset: 0, dur: Math.max(0, dur - 0.15), speech: true });
+      clips.push({ mediaId: s.voiceId, at: starts[i] + 0.15, offset: 0, dur: Math.max(0, dur - 0.15), rate: 1, volume: 1, fadeIn: 0.05, fadeOut: 0.1, loop: false, speech: true, duck: false, fromScene: true });
     }
-    if (s.useClipAudio && s.mediaIds[0]) {
-      clips.push({ mediaId: s.mediaIds[0], at: starts[i], offset: s.clipIn ?? 0, dur: s.duration, speech: true });
+    const clipId = s.mediaIds[0];
+    if (s.useClipAudio && !s.muted && clipId && media.get(clipId)?.kind === 'video') {
+      const rate = s.speed ?? 1;
+      clips.push({
+        mediaId: clipId, at: starts[i], offset: s.clipIn ?? defaultIn(media.get(clipId)), dur: s.duration, rate,
+        volume: s.volume ?? 1, fadeIn: Math.max(0.04, s.fadeIn ?? 0), fadeOut: Math.max(0.04, s.fadeOut ?? 0), loop: false,
+        speech: s.duck ?? s.kind === 'speaker', duck: false, fromScene: true,
+      });
     }
   });
+  for (const a of p.audio ?? []) {
+    const end = a.toEnd ? total : Math.min(total, a.at + a.dur);
+    if (end <= a.at) continue;
+    clips.push({
+      mediaId: a.mediaId, at: a.at, offset: a.offset, dur: end - a.at, rate: 1, volume: a.volume,
+      fadeIn: a.fadeIn, fadeOut: a.fadeOut, loop: !!a.loop, speech: a.role === 'voice', duck: a.role === 'music' && a.duck !== false,
+    });
+  }
   const speech: [number, number][] = [];
   for (const c of clips.filter((c) => c.speech).sort((a, b) => a.at - b.at)) {
     const last = speech[speech.length - 1];
     if (last && c.at <= last[1] + 0.6) last[1] = Math.max(last[1], c.at + c.dur);
     else speech.push([c.at, c.at + c.dur]);
   }
-  return { clips, musicId: p.musicId, total, speech };
+  return { clips, total, speech, duckLevel: p.duckLevel ?? 0.18 };
 }
 
 export async function preloadAudio(p: Project) {
-  const ids = new Set<string>();
-  if (p.musicId) ids.add(p.musicId);
-  for (const s of p.scenes) {
-    if (s.voiceId) ids.add(s.voiceId);
-    if (s.useClipAudio && s.mediaIds[0]) ids.add(s.mediaIds[0]);
-  }
-  await Promise.all([...ids].map((id) => getAudioBuffer(id)));
+  const plan = buildPlan(p);
+  await Promise.all([...new Set(plan.clips.map((c) => c.mediaId))].map((id) => getAudioBuffer(id)));
 }
 
-/** Music level at time t (before master volume). */
-export function musicEnvelope(plan: AudioPlan, t: number, duck: number) {
-  let g = 1;
-  for (const [a, b] of plan.speech) {
-    const ramp = 0.35;
-    if (t >= a - ramp && t <= b + ramp) {
-      const k = t < a ? (a - t) / ramp : t > b ? (t - b) / ramp : 0;
-      g = Math.min(g, duck + (1 - duck) * Math.min(1, k));
+/** Level of one item at timeline time t: fades, plus ducking for music. */
+function envelope(plan: AudioPlan, c: PlanClip, t: number) {
+  let g = c.volume;
+  const lt = t - c.at;
+  if (c.fadeIn > 0 && lt < c.fadeIn) g *= Math.max(0, lt / c.fadeIn);
+  const tail = c.at + c.dur - t;
+  if (c.fadeOut > 0 && tail < c.fadeOut) g *= Math.max(0, tail / c.fadeOut);
+  if (c.duck) {
+    let d = 1;
+    for (const [a, b] of plan.speech) {
+      const ramp = 0.35;
+      if (t >= a - ramp && t <= b + ramp) {
+        const k = t < a ? (a - t) / ramp : t > b ? (t - b) / ramp : 0;
+        d = Math.min(d, plan.duckLevel + (1 - plan.duckLevel) * Math.min(1, k));
+      }
     }
+    g *= d;
   }
-  if (t < 0.6) g *= t / 0.6;
-  const tail = plan.total - t;
-  if (tail < 2.2) g *= Math.max(0, tail / 2.2);
   return g;
 }
 
@@ -62,48 +83,34 @@ export function musicEnvelope(plan: AudioPlan, t: number, duck: number) {
  */
 export function schedule(ctx: BaseAudioContext, dest: AudioNode, p: Project, plan: AudioPlan, from: number, when: number, opts: { speechOnly?: boolean } = {}) {
   const nodes: AudioScheduledSourceNode[] = [];
-  const remain = plan.total - from;
-  if (remain <= 0) return nodes;
-  if (!opts.speechOnly && plan.musicId) {
-    const buf = cachedAudio(plan.musicId);
-    if (buf) {
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      src.loop = true;
-      const g = ctx.createGain();
-      const vol = p.musicVolume;
-      const step = 0.05;
-      g.gain.setValueAtTime(vol * musicEnvelope(plan, from, p.duckLevel), when);
-      for (let t = from + step; t <= plan.total + 1e-6; t += step) {
-        g.gain.linearRampToValueAtTime(vol * musicEnvelope(plan, t, p.duckLevel), when + (t - from));
-      }
-      src.connect(g).connect(dest);
-      src.start(when, from % buf.duration);
-      src.stop(when + remain);
-      nodes.push(src);
-    }
-  }
   for (const c of plan.clips) {
+    if (opts.speechOnly && !c.speech) continue;
     const end = c.at + c.dur;
     if (end <= from) continue;
     const buf = cachedAudio(c.mediaId);
     if (!buf) continue;
-    const skip = Math.max(0, from - c.at);
-    const offset = c.offset + skip;
-    if (offset >= buf.duration) continue;
-    const dur = Math.min(c.dur - skip, buf.duration - offset);
-    if (dur <= 0.01) continue;
+    const skip = Math.max(0, from - c.at); // timeline seconds already passed
+    let offset = c.offset + skip * c.rate;
+    if (c.loop) offset = offset % buf.duration;
+    else if (offset >= buf.duration) continue;
+    const playDur = c.loop ? c.dur - skip : Math.min(c.dur - skip, (buf.duration - offset) / c.rate);
+    if (playDur <= 0.01) continue;
     const src = ctx.createBufferSource();
     src.buffer = buf;
+    src.loop = c.loop;
+    src.playbackRate.value = c.rate;
     const g = ctx.createGain();
     const start = when + Math.max(0, c.at - from);
-    const f = 0.06;
-    g.gain.setValueAtTime(skip > 0 ? 1 : 0, start);
-    if (!skip) g.gain.linearRampToValueAtTime(1, start + f);
-    g.gain.setValueAtTime(1, start + Math.max(f, dur - f));
-    g.gain.linearRampToValueAtTime(0, start + dur);
+    const t0 = Math.max(from, c.at);
+    const step = 0.05;
+    g.gain.setValueAtTime(envelope(plan, c, t0), start);
+    const needsCurve = c.duck || c.fadeIn > 0 || c.fadeOut > 0;
+    if (needsCurve) {
+      for (let t = t0 + step; t <= t0 + playDur + 1e-6; t += step) g.gain.linearRampToValueAtTime(envelope(plan, c, t), when + (t - from));
+    }
     src.connect(g).connect(dest);
-    src.start(start, offset, dur);
+    if (c.loop) { src.start(start, offset); src.stop(start + playDur); }
+    else src.start(start, offset, playDur * c.rate);
     nodes.push(src);
   }
   return nodes;
@@ -123,5 +130,5 @@ export async function renderMix(p: Project, sampleRate = 48000, opts: { speechOn
 }
 
 export function hasAnyAudio(p: Project) {
-  return !!p.musicId || p.scenes.some((s) => s.voiceId || s.useClipAudio);
+  return buildPlan(p).clips.length > 0;
 }

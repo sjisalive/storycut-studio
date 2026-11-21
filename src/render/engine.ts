@@ -1,7 +1,7 @@
 // The renderer: draws any moment of a project onto a canvas. The same code is
 // used for the live preview and for frame-exact export, at any size/aspect.
 import QRCode from 'qrcode';
-import type { Caption, MediaItem, Project, Scene, StylePack } from '../types';
+import type { Caption, MediaItem, Overlay, Project, Scene, StylePack } from '../types';
 import type { Visual } from '../media';
 import { clamp, easeInOutCubic, easeOutBack, easeOutCubic, graphemes, seeded } from '../util';
 import { drawFit, drawLine, fitRich, fontString, formatCount, parseNumber, stripRich } from './text';
@@ -54,12 +54,15 @@ function contrastPick(bg: string, options: string[]) {
   return isLight(bg) ? '#111111' : '#ffffff';
 }
 
+/** Where a scene starts inside its video when no start point was chosen. */
+export const defaultIn = (m: MediaItem | undefined) => (m && m.duration > 6 ? m.duration * 0.2 : 0);
+
 function mediaTime(e: E, id: string | undefined, local: number, clipIn?: number) {
   if (!id) return undefined;
   const m = e.media.get(id);
   if (!m || m.kind !== 'video') return undefined;
-  const base = clipIn ?? (m.duration > 6 ? m.duration * 0.2 : 0);
-  let t = base + Math.max(0, local);
+  const base = clipIn ?? defaultIn(m);
+  let t = base + Math.max(0, local) * (e.scene.speed ?? 1);
   if (m.duration > 0.2 && t > m.duration - 0.05) t = (t % m.duration);
   return t;
 }
@@ -75,17 +78,91 @@ function cover(e: E, id: string | undefined, x: number, y: number, w: number, h:
     ctx.restore();
     return false;
   }
-  const s = Math.max(w / vis.w, h / vis.h) * zoom;
-  const dw = vis.w * s, dh = vis.h * s;
+  const sc = e.scene;
+  const rot = sc.rotate ?? 0;
+  const swap = rot === 90 || rot === 270;
+  const cr = sc.crop;
+  const cx0 = cr ? cr.l * vis.w : 0, cy0 = cr ? cr.t * vis.h : 0;
+  const cw = Math.max(2, vis.w * (1 - (cr?.l ?? 0) - (cr?.r ?? 0))), ch = Math.max(2, vis.h * (1 - (cr?.t ?? 0) - (cr?.b ?? 0)));
+  const vw = swap ? ch : cw, vh = swap ? cw : ch;
+  const look = lookFilter(sc);
+  const draw = (scale: number, ox: number, oy: number, filter: string) => {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    if (filter !== 'none') ctx.filter = filter;
+    ctx.translate(x + w / 2 + ox, y + h / 2 + oy);
+    if (rot) ctx.rotate((rot * Math.PI) / 180);
+    if (sc.flip) ctx.scale(-1, 1);
+    const left = (-cw * scale) / 2, top = (-ch * scale) / 2;
+    ctx.drawImage(vis.src, cx0, cy0, cw, ch, left, top, cw * scale, ch * scale);
+    if (sc.marks?.length) {
+      ctx.filter = 'none';
+      for (const m of sc.marks) hideBox(ctx, vis.src, vis.w, vis.h, m, cx0, cy0, left, top, scale);
+    }
+    ctx.restore();
+  };
+  const coverScale = Math.max(w / vw, h / vh);
+  if (sc.fit === 'fit') {
+    // whole picture, with a soft blurred copy filling the empty bands
+    const blur = `blur(${Math.round(Math.min(w, h) / 40)}px) brightness(0.65)${look === 'none' ? '' : ' ' + look}`;
+    draw(coverScale * 1.1, 0, 0, blur);
+    draw(Math.min(w / vw, h / vh) * (1 + (zoom - 1) * 0.3), 0, 0, look);
+    return true;
+  }
+  const s = coverScale * zoom;
+  const dw = vw * s, dh = vh * s;
   const r = seeded(seed || String(id));
   const dir = r() > 0.5 ? 1 : -1;
   const dx = (dw - w) / 2 * pan * dir;
   const dy = (dh - h) / 2 * pan * (r() > 0.5 ? 1 : -1) * 0.6;
-  ctx.save();
-  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-  ctx.drawImage(vis.src, x + (w - dw) / 2 + dx, y + (h - dh) / 2 + dy, dw, dh);
-  ctx.restore();
+  draw(s, dx, dy, look);
   return true;
+}
+
+/** Remove (smooth fill from the box edges, like ffmpeg delogo) or blur one area of the source frame. */
+function hideBox(ctx: CanvasRenderingContext2D, src: CanvasImageSource, sw: number, sh: number, m: { x: number; y: number; w: number; h: number; mode: 'fill' | 'blur' }, cx0: number, cy0: number, left: number, top: number, scale: number) {
+  const bx = clamp(m.x, 0, 1) * sw, by = clamp(m.y, 0, 1) * sh;
+  const bw = Math.max(2, Math.min(sw - bx, m.w * sw)), bh = Math.max(2, Math.min(sh - by, m.h * sh));
+  const dx = left + (bx - cx0) * scale, dy = top + (by - cy0) * scale, dw = bw * scale, dh = bh * scale;
+  const pad = Math.max(1, Math.min(bw, bh) * 0.06);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(dx, dy, dw, dh); ctx.clip();
+  if (m.mode === 'blur') {
+    ctx.filter = `blur(${Math.max(4, Math.round(Math.min(dw, dh) / 5))}px)`;
+    const ex = Math.min(bw, bh) * 0.4;
+    const sx = Math.max(0, bx - ex), sy = Math.max(0, by - ex);
+    const sx2 = Math.min(sw, bx + bw + ex), sy2 = Math.min(sh, by + bh + ex);
+    ctx.drawImage(src, sx, sy, sx2 - sx, sy2 - sy, left + (sx - cx0) * scale, top + (sy - cy0) * scale, (sx2 - sx) * scale, (sy2 - sy) * scale);
+  } else {
+    // Stretch the thin strips just outside each edge across the box, then soften.
+    ctx.filter = `blur(${Math.max(2, Math.round(Math.min(dw, dh) / 8))}px)`;
+    const strips: [number, number, number, number, number][] = [];
+    if (bx - pad >= 0) strips.push([bx - pad, by, pad, bh, 1]);
+    if (bx + bw + pad <= sw) strips.push([bx + bw, by, pad, bh, 0.5]);
+    if (by - pad >= 0) strips.push([bx, by - pad, bw, pad, 0.5]);
+    if (by + bh + pad <= sh) strips.push([bx, by + bh, bw, pad, 0.33]);
+    if (!strips.length) strips.push([bx, by, bw, bh, 1]);
+    strips.forEach(([sx, sy, w2, h2, a], i) => {
+      ctx.globalAlpha = i === 0 ? 1 : a;
+      ctx.drawImage(src, sx, sy, w2, h2, dx - dw * 0.1, dy - dh * 0.1, dw * 1.2, dh * 1.2);
+    });
+  }
+  ctx.restore();
+}
+
+const LOOK_PRESETS: Record<string, string> = {
+  vivid: 'saturate(1.35) contrast(1.08)', warm: 'sepia(0.22) saturate(1.2) brightness(1.03)', cool: 'hue-rotate(-10deg) saturate(1.05) brightness(1.03)',
+  bw: 'grayscale(1) contrast(1.12)', vintage: 'sepia(0.45) contrast(0.95) brightness(1.05)', fade: 'contrast(0.85) brightness(1.08) saturate(0.8)',
+};
+export function lookFilter(s: Scene) {
+  const l = s.look;
+  if (!l) return 'none';
+  const parts: string[] = [];
+  if (l.preset && l.preset !== 'none') parts.push(LOOK_PRESETS[l.preset]);
+  if (l.brightness !== 1) parts.push(`brightness(${l.brightness})`);
+  if (l.contrast !== 1) parts.push(`contrast(${l.contrast})`);
+  if (l.saturation !== 1) parts.push(`saturate(${l.saturation})`);
+  return parts.length ? parts.join(' ') : 'none';
 }
 
 function contain(e: E, id: string | undefined, x: number, y: number, w: number, h: number, alignBottom = false) {
@@ -695,6 +772,12 @@ function drawScene(ctx: CanvasRenderingContext2D, p: Project, idx: number, lt: n
   ctx.fillStyle = p.style.colors.bg;
   ctx.fillRect(0, 0, W, H);
   try { SCENE_FN[scene.kind](e); } catch (err) { console.error('scene draw failed', scene.kind, err); }
+  // fade from / to black
+  const fi = scene.fadeIn ?? 0, fo = scene.fadeOut ?? 0;
+  let a = 0;
+  if (fi > 0 && e.lt < fi) a = Math.max(a, 1 - e.lt / fi);
+  if (fo > 0 && e.dur - e.lt < fo) a = Math.max(a, 1 - (e.dur - e.lt) / fo);
+  if (a > 0) { ctx.fillStyle = `rgba(0,0,0,${Math.min(1, a)})`; ctx.fillRect(0, 0, W, H); }
   ctx.restore();
 }
 
@@ -787,6 +870,7 @@ export function renderFrame(ctx: CanvasRenderingContext2D, p: Project, t: number
         ctx.globalAlpha = 1;
     }
   }
+  drawOverlays(ctx, p, t, W, H, rt);
   drawCaptions(ctx, p, t, W, H);
   // gentle fade at the very end
   const tail = total - t;
@@ -852,5 +936,71 @@ export function projectText(p: Project) {
     for (const en of s.entries ?? []) parts.push(en.label, en.value);
   }
   for (const c of p.captions) parts.push(c.text);
+  for (const o of p.overlays ?? []) parts.push(o.text);
   return parts.join(' ');
+}
+
+
+// ---------------------------------------------------------------- overlays (text / picture track)
+export const OVERLAY_SIZE: Record<Overlay['preset'], number> = { title: 9, lower: 4.2, caption: 3.8, tag: 3.4, plain: 6 };
+
+function drawOverlays(ctx: CanvasRenderingContext2D, p: Project, t: number, W: number, H: number, rt: Runtime) {
+  const list = p.overlays ?? [];
+  if (!list.length) return;
+  const u = Math.min(W, H) / 100;
+  const S = safeArea(W, H);
+  const style = p.style;
+  for (const o of list) {
+    if (t < o.at || t >= o.at + o.dur) continue;
+    const lt = t - o.at;
+    const inK = clamp(lt / 0.35, 0, 1);
+    const outK = clamp((o.at + o.dur - t) / 0.3, 0, 1);
+    let alpha = o.opacity * (o.anim === 'none' ? 1 : Math.min(inK, outK));
+    let scale = 1, dx = 0;
+    if (o.anim === 'pop') scale = 0.55 + 0.45 * easeOutBack(inK);
+    if (o.anim === 'slide') dx = (1 - easeOutCubic(inK)) * -10 * u;
+    if (o.anim === 'type') alpha = o.opacity * outK;
+    const cx = o.x * W + dx, cy = o.y * H;
+    ctx.save();
+    ctx.globalAlpha = clamp(alpha, 0, 1);
+    if (scale !== 1) { ctx.translate(cx, cy); ctx.scale(scale, scale); ctx.translate(-cx, -cy); }
+    if (o.kind === 'image') {
+      const vis = rt.visual(o.mediaId);
+      if (vis && vis.w) {
+        const w = (W * o.size) / 100, h = (w * vis.h) / vis.w;
+        ctx.drawImage(vis.src, cx - w / 2, cy - h / 2, w, h);
+      }
+      ctx.restore();
+      continue;
+    }
+    const size = o.size * u;
+    const lines = (o.text || '').split('\n');
+    const maxW = o.preset === 'lower' ? S.w * 0.7 : S.w * 0.95;
+    const weight = o.preset === 'caption' || o.preset === 'tag' ? 700 : style.headWeight;
+    const fam = o.preset === 'caption' ? style.fontBody : style.fontHead;
+    const fit = fitRich(ctx, lines, fam, weight, maxW, H * 0.6, size, size * 0.4, 1.15, 6);
+    if (fit.overflow) rt.overflow.add(o.id);
+    const total = fit.rows.reduce((n, r) => n + r.words.length, 0);
+    const shown = o.anim === 'type' ? Math.floor(clamp(lt / Math.max(0.4, Math.min(o.dur * 0.6, total * 0.18)), 0, 1) * total + 0.999) : total;
+    const anim = (i: number) => ({ alpha: i < shown ? 1 : 0, scale: 1, dx: 0, dy: 0 });
+    const col = o.color || (o.preset === 'lower' ? contrastPick(style.colors.panel, [style.colors.panelText, style.colors.text]) : '#ffffff');
+    const colors: [string, string, string] = [col, style.colors.accent, style.colors.accent2];
+    const pad = size * 0.55;
+    if (o.preset === 'lower') {
+      const bw = fit.width + pad * 2.4, bh = fit.height + pad * 1.6;
+      const x0 = clamp(cx - bw / 2, 0, W - bw), y0 = cy - bh / 2;
+      drawPanel(ctx, style, x0, y0, bw, bh, u, Math.min(1, lt / 0.45), 'left', o.bg || undefined);
+      drawFit(ctx, fit, x0 + pad * 1.2, y0 + pad * 0.8, 'left', colors, anim);
+    } else if (o.preset === 'caption' || o.preset === 'tag' || o.bg) {
+      const bw = fit.width + pad * 2.2, bh = fit.height + pad * 1.4;
+      roundRect(ctx, cx - bw / 2, cy - bh / 2, bw, bh, o.preset === 'tag' ? bh / 2 : pad);
+      ctx.fillStyle = o.bg || (o.preset === 'tag' ? style.colors.accent : 'rgba(0,0,0,0.55)');
+      ctx.fill();
+      const tc = o.color || (o.preset === 'tag' ? (isLight(style.colors.accent) ? '#111111' : '#ffffff') : '#ffffff');
+      drawFit(ctx, fit, cx, cy - bh / 2 + pad * 0.7, 'center', [tc, style.colors.accent2, style.colors.accent], anim);
+    } else {
+      drawFit(ctx, fit, cx, cy - fit.height / 2, 'center', colors, anim, o.preset === 'title' ? 'rgba(0,0,0,0.55)' : undefined);
+    }
+    ctx.restore();
+  }
 }

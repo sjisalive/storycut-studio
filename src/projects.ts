@@ -4,6 +4,7 @@ import { strFromU8, strToU8, unzip, zip } from 'fflate';
 import type { BrandKit, Project } from './types';
 import { getBlob, readMedia } from './media';
 import { download } from './util';
+import { migrate } from './edit';
 
 const store = createStore('storycut-studio', 'kv');
 
@@ -39,7 +40,7 @@ export async function loadProject(id: string, onProgress?: (n: number, total: nu
     const fresh = await readMedia(blob, m.name, { id: m.id, role: m.role, placeholder: m.placeholder });
     media.push({ ...fresh, role: m.role });
   }
-  return { ...p, media };
+  return migrate({ ...p, media });
 }
 
 export async function deleteProject(id: string) {
@@ -106,5 +107,5 @@ export async function openProjectFile(file: Blob): Promise<Project> {
     const fresh = await readMedia(new Blob([files[key] as BlobPart], { type: m.mime }), m.name, { id: m.id, role: m.role, placeholder: m.placeholder });
     media.push({ ...fresh, role: m.role });
   }
-  return { ...p, media };
+  return migrate({ ...p, media });
 }

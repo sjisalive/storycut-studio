@@ -29,6 +29,20 @@ export function dims(aspect: AspectKey, short: number) {
 
 export const estimateBytes = (pr: ExportPreset, seconds: number) => ((pr.vbps * 0.85 + pr.abps) * seconds) / 8;
 
+/** Settings that aim for a given file size (compress). */
+export function presetForSize(mb: number, seconds: number): ExportPreset {
+  const abps = 96_000;
+  const vbps = Math.max(150_000, ((mb * 8_000_000) / Math.max(1, seconds)) * 0.92 - abps);
+  const short = vbps < 900_000 ? 480 : vbps < 1_800_000 ? 540 : vbps < 3_500_000 ? 720 : 1080;
+  return { id: 'small', label: `Target ${mb} MB`, hint: '', short, vbps: Math.round(vbps), abps, fps: vbps < 600_000 ? 24 : 30 };
+}
+
+/** Just the soundtrack, as a WAV file. */
+export async function exportAudioWav(p: Project): Promise<Blob> {
+  const { encodeWav } = await import('../audio/synth');
+  return encodeWav(await renderMix(p, 48000));
+}
+
 export interface ExportResult { blob: Blob; ext: string; note?: string }
 export type Progress = (pct: number, label: string) => void;
 

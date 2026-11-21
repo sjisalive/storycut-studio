@@ -82,6 +82,59 @@ export interface Scene {
   useClipAudio?: boolean; // speaker bites
   biteId?: string;
   rowId?: string;
+  // ---- editing (clip) settings
+  speed?: number; // 0.25 … 4 (1 = normal)
+  volume?: number; // clip sound level 0 … 2 (1 = normal)
+  muted?: boolean; // clip sound off
+  duck?: boolean; // dip music while this clip's sound plays
+  fadeIn?: number; // seconds, from black
+  fadeOut?: number; // seconds, to black
+  fit?: 'fill' | 'fit'; // fill = crop to frame, fit = whole picture on blurred background
+  rotate?: 0 | 90 | 180 | 270;
+  flip?: boolean;
+  look?: ClipLook;
+  crop?: { l: number; r: number; t: number; b: number }; // fractions of the source frame cut from each side
+  marks?: MarkBox[]; // watermark / logo areas to remove or blur
+}
+
+/** An area of the source frame (fractions 0..1) to hide: smooth fill from the surroundings, or blur. */
+export interface MarkBox { id: string; x: number; y: number; w: number; h: number; mode: 'fill' | 'blur' }
+
+export interface ClipLook { brightness: number; contrast: number; saturation: number; preset: LookPreset }
+export type LookPreset = 'none' | 'vivid' | 'warm' | 'cool' | 'bw' | 'vintage' | 'fade';
+
+/** Text or picture laid over the video on its own track (runs in parallel with scenes). */
+export interface Overlay {
+  id: string;
+  kind: 'text' | 'image';
+  at: number;
+  dur: number;
+  text: string;
+  mediaId?: string;
+  preset: 'title' | 'lower' | 'caption' | 'tag' | 'plain';
+  x: number; // 0..1 centre
+  y: number; // 0..1 centre
+  size: number; // text: % of short side; image: % of width
+  color: string; // '' = style text colour
+  bg: string; // '' = none / style panel
+  anim: 'fade' | 'pop' | 'slide' | 'type' | 'none';
+  opacity: number;
+}
+
+/** A sound on the music or voice track. */
+export interface AudioItem {
+  id: string;
+  mediaId: string;
+  role: 'music' | 'voice' | 'sfx';
+  at: number; // start on the timeline
+  offset: number; // start inside the file
+  dur: number; // length on the timeline
+  toEnd?: boolean; // music: stretch to the end of the video
+  loop?: boolean;
+  volume: number; // 0 … 2
+  fadeIn: number;
+  fadeOut: number;
+  duck?: boolean; // music: dip under speech
 }
 
 export interface StyleColors {
@@ -140,13 +193,17 @@ export interface Project {
   hookLines: string[];
   headline: string;
   cta: CtaInfo;
-  musicId?: string;
-  musicVolume: number; // 0..1
+  musicId?: string; // (old projects) — converted to an AudioItem on load
+  musicVolume: number; // 0..1 (old projects)
   duckLevel: number; // 0.15..0.2 = music level under speech
   beats: number[];
   snapToBeats: boolean;
   captions: Caption[];
   captionStyle: CaptionStyle;
+  overlays: Overlay[];
+  audio: AudioItem[];
+  rangeIn?: number; // selected part (I / O)
+  rangeOut?: number;
   updated: number;
   isTemplate?: boolean;
 }

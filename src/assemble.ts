@@ -17,7 +17,7 @@ export function defaultProject(): Project {
     media: [], rows: [newRow(), newRow(), newRow()], bites: [], scenes: [],
     hookLines: [...vt.text.en.hook], headline: vt.text.en.headline,
     cta: { title: vt.text.en.cta, subtitle: vt.text.en.ctaSub, website: '', contact: '', dateVenue: '', social: '', qr: '' },
-    musicVolume: 0.8, duckLevel: 0.18, beats: [], snapToBeats: true, captions: [], captionStyle: 'off', updated: Date.now(),
+    musicVolume: 0.8, duckLevel: 0.18, beats: [], snapToBeats: true, captions: [], captionStyle: 'off', overlays: [], audio: [], updated: Date.now(),
   };
 }
 
