@@ -182,7 +182,7 @@ export default function App() {
       const el = e.target as HTMLInputElement;
       const tag = el?.tagName;
       const typing = (tag === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes(el.type)) || tag === 'TEXTAREA' || tag === 'SELECT';
-      if (typing || drawer) return;
+      if (typing || drawer || gridOpen || document.querySelector('.modal-bg')) return;
       if (tag === 'INPUT' && (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End')) el.blur();
       const k = e.key.toLowerCase();
       const mod = e.ctrlKey || e.metaKey;

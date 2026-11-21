@@ -37,12 +37,13 @@ export function MultiTimeline({ store, time, sel, onSelect, onSeek, pps, setPps,
 
   // Fit to width the first time there is content
   const fitted = useRef(false);
+  useEffect(() => { fitted.current = false; }, [p.id]);
   useEffect(() => {
     const el = wrap.current;
     if (!el || fitted.current || total <= 0) return;
     fitted.current = true;
     setPps(Math.max(8, Math.min(120, (el.clientWidth - LABEL_W - 30) / (total + 2))));
-  }, [total, setPps]);
+  }, [total, setPps, p.id]);
 
   const toTime = (clientX: number) => {
     const el = wrap.current!;

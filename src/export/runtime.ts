@@ -16,6 +16,7 @@ export class LiveRuntime implements Runtime {
     if (!id) return null;
     if (time !== undefined) {
       const v = getVideoEl(id);
+      if (v && this.touched.has(id)) return getVisual(id); // same video twice in one frame: don't fight over it
       if (v) {
         this.touched.add(id);
         const drift = Math.abs(v.currentTime - time);

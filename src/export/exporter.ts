@@ -106,25 +106,28 @@ export async function exportVideo(p: Project, preset: ExportPreset, aspect: Aspe
   const frames = Math.max(1, Math.round(total * preset.fps));
   const VF = (window as any).VideoFrame;
   const started = performance.now();
-  for (let i = 0; i < frames; i++) {
-    if (signal?.aborted) { venc.close(); await rt.dispose(); throw new DOMException('Cancelled', 'AbortError'); }
-    if (encErr) throw encErr;
-    const t = i / preset.fps;
-    await rt.draw(ctx, p, t, w, h);
-    const frame = new VF(canvas, { timestamp: Math.round((i * 1e6) / preset.fps), duration: Math.round(1e6 / preset.fps) });
-    venc.encode(frame, { keyFrame: i % (preset.fps * 2) === 0 });
-    frame.close();
-    while (venc.encodeQueueSize > 8) await sleep(2);
-    if (i % 5 === 0) {
-      const el = (performance.now() - started) / 1000;
-      const left = (el / (i + 1)) * (frames - i - 1);
-      onProgress(0.03 + 0.9 * (i / frames), `Making frames… ${i + 1}/${frames} · about ${Math.ceil(left)} s left`);
-      await sleep(0);
+  try {
+    for (let i = 0; i < frames; i++) {
+      if (signal?.aborted) { try { venc.close(); } catch { /* closed */ } throw new DOMException('Cancelled', 'AbortError'); }
+      if (encErr) throw encErr;
+      const t = i / preset.fps;
+      await rt.draw(ctx, p, t, w, h);
+      const frame = new VF(canvas, { timestamp: Math.round((i * 1e6) / preset.fps), duration: Math.round(1e6 / preset.fps) });
+      venc.encode(frame, { keyFrame: i % (preset.fps * 2) === 0 });
+      frame.close();
+      while (venc.encodeQueueSize > 8) await sleep(2);
+      if (i % 5 === 0) {
+        const el = (performance.now() - started) / 1000;
+        const left = (el / (i + 1)) * (frames - i - 1);
+        onProgress(0.03 + 0.9 * (i / frames), `Making frames… ${i + 1}/${frames} · about ${Math.ceil(left)} s left`);
+        await sleep(0);
+      }
     }
+    await venc.flush();
+  } finally {
+    try { venc.close(); } catch { /* closed */ }
+    await rt.dispose();
   }
-  await venc.flush();
-  venc.close();
-  await rt.dispose();
 
   if (acodec) {
     onProgress(0.95, 'Adding sound…');

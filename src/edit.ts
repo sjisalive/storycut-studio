@@ -116,8 +116,15 @@ export function joinNext(p: Project, sceneId: string): Project | null {
   const i = p.scenes.findIndex((s) => s.id === sceneId);
   const s = p.scenes[i], n = p.scenes[i + 1];
   if (!s || !n || s.mediaIds[0] !== n.mediaIds[0] || s.kind !== n.kind || (s.speed ?? 1) !== (n.speed ?? 1)) return null;
-  const expected = effIn(s, p.media) + s.duration * (s.speed ?? 1);
-  if (Math.abs(effIn(n, p.media) - expected) > 0.12 && p.media.find((m) => m.id === s.mediaIds[0])?.kind === 'video') return null;
+  if (s.kind === 'grid' || n.kind === 'grid') {
+    const a = s.cells ?? [], b = n.cells ?? [];
+    if (s.layout !== n.layout || a.length !== b.length) return null;
+    const step = s.duration * (s.speed ?? 1);
+    if (a.some((c, k) => c.mediaId !== b[k].mediaId || Math.abs(c.clipIn + step - b[k].clipIn) > 0.12)) return null;
+  } else {
+    const expected = effIn(s, p.media) + s.duration * (s.speed ?? 1);
+    if (Math.abs(effIn(n, p.media) - expected) > 0.12 && p.media.find((m) => m.id === s.mediaIds[0])?.kind === 'video') return null;
+  }
   const merged: Scene = { ...s, duration: s.duration + n.duration, fadeOut: n.fadeOut, transition: n.transition };
   const scenes = [...p.scenes];
   scenes.splice(i, 2, merged);
