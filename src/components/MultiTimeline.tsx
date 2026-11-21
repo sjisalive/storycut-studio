@@ -6,6 +6,9 @@ import { buildPlan } from '../audio/mix';
 import { SCENE_LABELS } from '../presets';
 import { stripRich } from '../render/text';
 import { itemEnd, snap, snapPoints, trimScene } from '../edit';
+import { Waveform } from './Waveform';
+import { defaultIn } from '../render/engine';
+import { useMemo } from 'react';
 
 export type Sel = { kind: 'scene' | 'overlay' | 'audio'; id: string } | null;
 
@@ -95,6 +98,16 @@ export function MultiTimeline({ store, time, sel, onSelect, onSeek, pps, setPps,
     </>
   );
   const isSel = (kind: string, id: string) => sel?.kind === kind && sel.id === id;
+  const mainMusicItem = p.audio.find((a) => a.role === 'music' && a.toEnd) ?? p.audio.find((a) => a.role === 'music');
+  const beatsKey = p.beats.length + ':' + (p.beats[0] ?? 0) + ':' + (p.beats[p.beats.length - 1] ?? 0);
+  const beatCache = useMemo(() => new Map<string, number[]>(), [beatsKey]); // eslint-disable-line
+  /** Beats inside [a, b], relative to a (stable array so the waveform is not redrawn needlessly). */
+  const beatsIn = (a: number, b: number) => {
+    const k = `${a.toFixed(3)}-${b.toFixed(3)}`;
+    let v = beatCache.get(k);
+    if (!v) { v = p.beats.filter((t) => t >= a && t <= b).map((t) => t - a); beatCache.set(k, v); }
+    return v;
+  };
 
   return (
     <div className="mt" ref={wrap} onWheel={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); setPps(Math.max(4, Math.min(300, pps * (e.deltaY < 0 ? 1.15 : 0.87)))); } }}>
@@ -134,6 +147,9 @@ export function MultiTimeline({ store, time, sel, onSelect, onSeek, pps, setPps,
                   }}
                   onClick={(e) => { e.stopPropagation(); onSelect({ kind: 'scene', id: s.id }); }}
                 >
+                  {s.useClipAudio && !s.muted && m?.kind === 'video' && m.hasAudio && w > 10 && (
+                    <span className="clip-wave"><Waveform mediaId={m.id} offset={s.clipIn ?? defaultIn(m)} dur={s.duration} rate={s.speed ?? 1} width={w - 4} height={14} volume={s.volume ?? 1} color="rgba(255,255,255,0.9)" fileDur={m.duration} /></span>
+                  )}
                   <span className="lbl">{warnings.has(s.id) ? '⚠ ' : ''}{s.muted ? '🔇 ' : ''}{s.speed && s.speed !== 1 ? `${s.speed}× ` : ''}{sceneLabel(p, i)}</span>
                   {w > 18 && <span className="h l" onPointerDown={(e) => drag(e, 'trim', starts[i], (dt) => update((c) => trimScene(c, s.id, 'start', s.duration - dt), 'trim-' + s.id))} />}
                   {w > 18 && <span className="h r" onPointerDown={(e) => drag(e, 'trim', starts[i] + s.duration, (dt) => update((c) => trimScene(c, s.id, 'end', s.duration + dt), 'trim-' + s.id))} />}
@@ -163,7 +179,7 @@ export function MultiTimeline({ store, time, sel, onSelect, onSeek, pps, setPps,
         <div className="mt-row">
           <div className="mt-label">🎵 Music</div>
           <div className="mt-track" style={{ width: trackW }}>
-            {p.audio.filter((a) => a.role === 'music').map((a) => <AudioBlock key={a.id} a={a} />)}
+            {p.audio.filter((a) => a.role === 'music').map((a) => audioBlock(a))}
             {overlayEls}
           </div>
         </div>
@@ -173,10 +189,11 @@ export function MultiTimeline({ store, time, sel, onSelect, onSeek, pps, setPps,
           <div className="mt-track" style={{ width: trackW }}>
             {plan.clips.filter((c) => c.fromScene).map((c, i) => (
               <div key={'c' + i} className="item ghost" style={{ left: c.at * pps, width: Math.max(4, c.dur * pps) }} title={media.get(c.mediaId)?.kind === 'video' ? 'Sound of the video clip (edit it on the clip)' : 'Scene voiceover'}>
+                <Waveform mediaId={c.mediaId} offset={c.offset} dur={c.dur} rate={c.rate} width={Math.max(4, c.dur * pps)} height={30} volume={c.volume} color="rgba(100,116,139,0.55)" fileDur={media.get(c.mediaId)?.duration} />
                 <span className="lbl">{media.get(c.mediaId)?.kind === 'video' ? '🗣 clip sound' : '🎙 voiceover'}</span>
               </div>
             ))}
-            {p.audio.filter((a) => a.role !== 'music').map((a) => <AudioBlock key={a.id} a={a} />)}
+            {p.audio.filter((a) => a.role !== 'music').map((a) => audioBlock(a))}
             {overlayEls}
           </div>
         </div>
@@ -184,15 +201,18 @@ export function MultiTimeline({ store, time, sel, onSelect, onSeek, pps, setPps,
     </div>
   );
 
-  function AudioBlock({ a }: { a: AudioItem }) {
+  function audioBlock(a: AudioItem) {
     const end = itemEnd(a, total);
     const w = Math.max(6, (end - a.at) * pps);
     const fi = Math.min(w, a.fadeIn * pps), fo = Math.min(w, a.fadeOut * pps);
     return (
-      <div className={`item ${a.role} ${isSel('audio', a.id) ? 'sel' : ''}`} style={{ left: a.at * pps, width: w }}
+      <div key={a.id} className={`item ${a.role} ${isSel('audio', a.id) ? 'sel' : ''}`} style={{ left: a.at * pps, width: w }}
         title={`${media.get(a.mediaId)?.name ?? ''} · volume ${Math.round(a.volume * 100)}%${a.toEnd ? ' · to the end' : ''}`}
         onClick={(e) => { e.stopPropagation(); onSelect({ kind: 'audio', id: a.id }); }}
         onPointerDown={(e) => { onSelect({ kind: 'audio', id: a.id }); drag(e, 'move', a.at, (dt) => setAudio(a.id, { at: Math.max(0, a.at + dt) }, 'mv-' + a.id)); }}>
+        <Waveform mediaId={a.mediaId} offset={a.offset} dur={end - a.at} loop={!!a.loop} width={w} height={30} volume={a.volume}
+          color={a.role === 'music' ? 'rgba(47,111,71,0.55)' : a.role === 'voice' ? 'rgba(67,56,202,0.5)' : 'rgba(190,24,93,0.5)'}
+          beats={a.role === 'music' && a === mainMusicItem ? beatsIn(a.at, end) : undefined} fileDur={media.get(a.mediaId)?.duration} />
         {fi > 2 && <span className="fade in" style={{ width: fi }} />}
         {fo > 2 && <span className="fade out" style={{ width: fo }} />}
         <span className="lbl">{a.role === 'music' ? '🎵' : a.role === 'voice' ? '🎙' : '🔊'} {media.get(a.mediaId)?.name}</span>

@@ -170,3 +170,33 @@ export function registerImage(id: string, blob: Blob, bmp: ImageBitmap) {
   blobs.set(id, blob);
   images.set(id, bmp);
 }
+
+// ------------------------------------------------------------ waveform peaks
+const peaks = new Map<string, Promise<Float32Array | null>>();
+export const PEAK_RATE = 100; // values per second
+
+/** Loudness outline of a file's sound (max level every 10 ms, scaled so the loudest part = 1). */
+export function getPeaks(id: string): Promise<Float32Array | null> {
+  let p = peaks.get(id);
+  if (!p) {
+    p = getAudioBuffer(id).then((buf) => {
+      if (!buf) return null;
+      const step = Math.max(1, Math.round(buf.sampleRate / PEAK_RATE));
+      const n = Math.ceil(buf.length / step);
+      const out = new Float32Array(n);
+      const chans = Array.from({ length: Math.min(2, buf.numberOfChannels) }, (_, c) => buf.getChannelData(c));
+      let top = 0;
+      for (let i = 0; i < n; i++) {
+        let m = 0;
+        const end = Math.min(buf.length, (i + 1) * step);
+        for (const d of chans) for (let j = i * step; j < end; j += 4) { const v = Math.abs(d[j]); if (v > m) m = v; }
+        out[i] = m;
+        if (m > top) top = m;
+      }
+      if (top > 0) for (let i = 0; i < n; i++) out[i] = Math.min(1, out[i] / top);
+      return out;
+    });
+    peaks.set(id, p);
+  }
+  return p;
+}

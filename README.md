@@ -52,8 +52,8 @@ Everything is on **one screen**, like a desktop video editor. Nothing is step by
 ┌ Timeline — tracks run in parallel ─────────────────────────────────────────────────────────┐
 │ 🎬 Video   clips & designed scenes (drag to reorder, drag edges to trim)                     │
 │ 🔤 Text    titles, lower thirds, subtitles, tags, logos (drag to move / resize)             │
-│ 🎵 Music   background music with fades and auto-ducking; green ticks = detected beats       │
-│ 🎙 Voice   voiceovers, sound effects, detached clip sound                                   │
+│ 🎵 Music   waveform of the music with its beats marked (dark line = start of each bar)       │
+│ 🎙 Voice   waveforms of voiceovers, sound effects and clip sound                             │
 └────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -68,6 +68,7 @@ Everything is on **one screen**, like a desktop video editor. Nothing is step by
 | **Add music** | Media → ＋ on a music file (or Audio → Background music). There is also *Make a music bed* if you have no music. |
 | **Fade music** | Audio tab → Fade in / Fade out, or select the music block. Fades show as shading on the block. |
 | **Auto-ducking** | Music dips under voiceovers, speaker clips and any clip with *Dip music under it* |
+| **See the sound** | Every sound on the timeline shows its waveform: music, voice, sound effects, and a strip along the bottom of video clips that have sound. Music also shows the detected beats, with every 4th beat (the start of a bar) drawn darker, so you can line cuts up by eye. The waveform follows trims, speed, looping and volume. |
 | **Cut on the beat** | Audio → *Cut on the beat* (selected clip or all clips, every 1/2/4/8 beats). Media → tick clips → **Beat montage** builds a whole edit on the beat. Snap also catches beats. |
 | **Compress** | Export → *Compress to a file size* (e.g. 16 MB for WhatsApp, 25 MB for email), or Media → ⋯ → *Compress this video* for a single file |
 | **Crop** | Select clip → *Crop / Remove watermark* → Left / Right / Top / Bottom, or *Crop to 16:9 / 9:16 shape* |
