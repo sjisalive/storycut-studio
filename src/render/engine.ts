@@ -12,6 +12,8 @@ export interface Runtime {
   visual(id: string | undefined, time?: number): Visual | null;
   overflow: Set<string>;
   layers: HTMLCanvasElement[];
+  /** Filled by the preview: where each overlay was drawn (for click / drag on the picture). */
+  boxes?: Map<string, { cx: number; cy: number; w: number; h: number; rot: number }>;
 }
 
 export interface Safe { x: number; y: number; w: number; h: number; portrait: boolean; wide: boolean }
@@ -961,45 +963,60 @@ function drawOverlays(ctx: CanvasRenderingContext2D, p: Project, t: number, W: n
     if (o.anim === 'slide') dx = (1 - easeOutCubic(inK)) * -10 * u;
     if (o.anim === 'type') alpha = o.opacity * outK;
     const cx = o.x * W + dx, cy = o.y * H;
+    const rot = ((o.rotate ?? 0) * Math.PI) / 180;
     ctx.save();
     ctx.globalAlpha = clamp(alpha, 0, 1);
-    if (scale !== 1) { ctx.translate(cx, cy); ctx.scale(scale, scale); ctx.translate(-cx, -cy); }
+    ctx.translate(cx, cy);
+    if (rot) ctx.rotate(rot);
+    if (scale !== 1) ctx.scale(scale, scale);
+    ctx.translate(-cx, -cy);
+    const record = (w: number, h: number) => rt.boxes?.set(o.id, { cx, cy, w, h, rot });
     if (o.kind === 'image') {
       const vis = rt.visual(o.mediaId);
       if (vis && vis.w) {
         const w = (W * o.size) / 100, h = (w * vis.h) / vis.w;
         ctx.drawImage(vis.src, cx - w / 2, cy - h / 2, w, h);
+        record(w, h);
       }
       ctx.restore();
       continue;
     }
     const size = o.size * u;
-    const lines = (o.text || '').split('\n');
-    const maxW = o.preset === 'lower' ? S.w * 0.7 : S.w * 0.95;
-    const weight = o.preset === 'caption' || o.preset === 'tag' ? 700 : style.headWeight;
-    const fam = o.preset === 'caption' ? style.fontBody : style.fontHead;
-    const fit = fitRich(ctx, lines, fam, weight, maxW, H * 0.6, size, size * 0.4, 1.15, 6);
+    const raw = o.upper ? (o.text || '').toLocaleUpperCase() : o.text || '';
+    const lines = raw.split('\n');
+    const maxW = o.preset === 'lower' ? S.w * 0.7 : Math.abs(Math.sin(rot)) > 0.7 ? H * 0.9 : S.w * 0.95;
+    const baseWeight = o.preset === 'caption' || o.preset === 'tag' ? 700 : style.headWeight;
+    const weight = `${o.italic ? 'italic ' : ''}${o.bold === undefined ? baseWeight : o.bold ? 800 : 400}`;
+    const fam = o.font || (o.preset === 'caption' ? style.fontBody : style.fontHead);
+    const fit = fitRich(ctx, lines, fam, weight, maxW, H * 0.6, size, size * 0.4, o.spacing ?? 1.15, 8);
     if (fit.overflow) rt.overflow.add(o.id);
     const total = fit.rows.reduce((n, r) => n + r.words.length, 0);
     const shown = o.anim === 'type' ? Math.floor(clamp(lt / Math.max(0.4, Math.min(o.dur * 0.6, total * 0.18)), 0, 1) * total + 0.999) : total;
     const anim = (i: number) => ({ alpha: i < shown ? 1 : 0, scale: 1, dx: 0, dy: 0 });
     const col = o.color || (o.preset === 'lower' ? contrastPick(style.colors.panel, [style.colors.panelText, style.colors.text]) : '#ffffff');
     const colors: [string, string, string] = [col, style.colors.accent, style.colors.accent2];
+    const stroke: [string, number] | undefined = o.outline ? [o.outlineColor || '#000000', (o.outline / 100) * size * 2] : undefined;
+    const shadow = o.shadow === undefined ? (o.preset === 'title' ? 'rgba(0,0,0,0.55)' : undefined) : o.shadow ? 'rgba(0,0,0,0.6)' : undefined;
+    const align = o.align ?? (o.preset === 'lower' ? 'left' : 'center');
+    const ax = (left: number, width: number) => (align === 'left' ? left : align === 'right' ? left + width : left + width / 2);
     const pad = size * 0.55;
     if (o.preset === 'lower') {
       const bw = fit.width + pad * 2.4, bh = fit.height + pad * 1.6;
-      const x0 = clamp(cx - bw / 2, 0, W - bw), y0 = cy - bh / 2;
+      const x0 = cx - bw / 2, y0 = cy - bh / 2;
       drawPanel(ctx, style, x0, y0, bw, bh, u, Math.min(1, lt / 0.45), 'left', o.bg || undefined);
-      drawFit(ctx, fit, x0 + pad * 1.2, y0 + pad * 0.8, 'left', colors, anim);
+      drawFit(ctx, fit, ax(x0 + pad * 1.2, fit.width), y0 + pad * 0.8, align, colors, anim, shadow, stroke);
+      record(bw, bh);
     } else if (o.preset === 'caption' || o.preset === 'tag' || o.bg) {
       const bw = fit.width + pad * 2.2, bh = fit.height + pad * 1.4;
       roundRect(ctx, cx - bw / 2, cy - bh / 2, bw, bh, o.preset === 'tag' ? bh / 2 : pad);
       ctx.fillStyle = o.bg || (o.preset === 'tag' ? style.colors.accent : 'rgba(0,0,0,0.55)');
       ctx.fill();
       const tc = o.color || (o.preset === 'tag' ? (isLight(style.colors.accent) ? '#111111' : '#ffffff') : '#ffffff');
-      drawFit(ctx, fit, cx, cy - bh / 2 + pad * 0.7, 'center', [tc, style.colors.accent2, style.colors.accent], anim);
+      drawFit(ctx, fit, ax(cx - fit.width / 2, fit.width), cy - bh / 2 + pad * 0.7, align, [tc, style.colors.accent2, style.colors.accent], anim, shadow, stroke);
+      record(bw, bh);
     } else {
-      drawFit(ctx, fit, cx, cy - fit.height / 2, 'center', colors, anim, o.preset === 'title' ? 'rgba(0,0,0,0.55)' : undefined);
+      drawFit(ctx, fit, ax(cx - fit.width / 2, fit.width), cy - fit.height / 2, align, colors, anim, shadow, stroke);
+      record(fit.width + pad, fit.height + pad * 0.5);
     }
     ctx.restore();
   }

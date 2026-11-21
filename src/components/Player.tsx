@@ -12,10 +12,15 @@ import { fmtTime } from '../util';
 export interface PlayerHandle { seek: (t: number) => void; toggle: () => void; time: () => number; step: (d: number) => void }
 
 /** Canvas preview with real-time audio. */
-export const Player = forwardRef<PlayerHandle, { project: Project; onTime?: (t: number) => void; onWarnings?: (ids: Set<string>) => void }>(
-  function Player({ project, onTime, onWarnings }, ref) {
+export interface OverlayEdit { selected?: string; onPick: (id: string | null) => void; onChange: (id: string, patch: { x?: number; y?: number; size?: number }, key: string) => void }
+
+export const Player = forwardRef<PlayerHandle, { project: Project; onTime?: (t: number) => void; onWarnings?: (ids: Set<string>) => void; edit?: OverlayEdit }>(
+  function Player({ project, onTime, onWarnings, edit }, ref) {
+    const editRef = useRef(edit);
+    editRef.current = edit;
     const canvas = useRef<HTMLCanvasElement>(null);
     const rt = useRef(new LiveRuntime());
+    if (!rt.current.boxes) rt.current.boxes = new Map();
     const tRef = useRef(0);
     const pRef = useRef(project);
     pRef.current = project;
@@ -101,8 +106,22 @@ export const Player = forwardRef<PlayerHandle, { project: Project; onTime?: (t: 
         }
         const ctx = canvas.current?.getContext('2d');
         if (ctx) {
+          rt.current.boxes!.clear();
           renderFrame(ctx, p, tRef.current, W, H, rt.current);
           rt.current.endFrame();
+          // selection frame around the chosen text / logo (preview only, never exported)
+          const selId = editRef.current?.selected;
+          const bx = selId ? rt.current.boxes!.get(selId) : undefined;
+          if (bx) {
+            ctx.save();
+            ctx.translate(bx.cx, bx.cy); ctx.rotate(bx.rot);
+            ctx.setLineDash([8, 6]); ctx.lineWidth = 2; ctx.strokeStyle = '#a8d5b5';
+            ctx.strokeRect(-bx.w / 2 - 4, -bx.h / 2 - 4, bx.w + 8, bx.h + 8);
+            ctx.setLineDash([]); ctx.fillStyle = '#2f6f47';
+            const hs = Math.max(10, W / 90);
+            ctx.fillRect(bx.w / 2 + 4 - hs / 2, bx.h / 2 + 4 - hs / 2, hs, hs);
+            ctx.restore();
+          }
         }
         if (now - lastUi > 90) { lastUi = now; setTime(tRef.current); onTime?.(tRef.current); }
         raf = requestAnimationFrame(loop);
@@ -113,10 +132,57 @@ export const Player = forwardRef<PlayerHandle, { project: Project; onTime?: (t: 
 
     useEffect(() => () => { stopAudio(); rt.current.stopAll(); actx.current?.close(); actx.current = null; playingRef.current = false; }, []);
 
+    /** Click to play/pause; click a text or logo to select it, drag to move, drag its corner to resize. */
+    const pointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const c = canvas.current!;
+      const r = c.getBoundingClientRect();
+      const k = c.width / r.width;
+      const px = (e.clientX - r.left) * k, py = (e.clientY - r.top) * k;
+      const local = (b: { cx: number; cy: number; rot: number }, x: number, y: number) => {
+        const dx = x - b.cx, dy = y - b.cy, cs = Math.cos(-b.rot), sn = Math.sin(-b.rot);
+        return { x: dx * cs - dy * sn, y: dx * sn + dy * cs };
+      };
+      const ed = editRef.current;
+      const boxes = [...(rt.current.boxes ?? new Map()).entries()].reverse();
+      const hs = Math.max(14, W / 60);
+      const selB = ed?.selected ? rt.current.boxes?.get(ed.selected) : undefined;
+      let mode: 'move' | 'size' | null = null;
+      let id: string | null = null;
+      if (selB && ed?.selected) {
+        const l = local(selB, px, py);
+        if (Math.abs(l.x - (selB.w / 2 + 4)) < hs && Math.abs(l.y - (selB.h / 2 + 4)) < hs) { mode = 'size'; id = ed.selected; }
+      }
+      if (!mode) {
+        for (const [bid, b] of boxes) {
+          const l = local(b, px, py);
+          if (Math.abs(l.x) <= b.w / 2 + 6 && Math.abs(l.y) <= b.h / 2 + 6) { mode = 'move'; id = bid; break; }
+        }
+      }
+      if (!ed || !mode || !id) {
+        ed?.onPick(null);
+        playingRef.current ? pause() : play();
+        return;
+      }
+      const o = pRef.current.overlays.find((x) => x.id === id);
+      if (!o) return;
+      ed.onPick(id);
+      c.setPointerCapture(e.pointerId);
+      const b0 = rt.current.boxes!.get(id)!;
+      const d0 = Math.hypot(px - b0.cx, py - b0.cy) || 1;
+      const move = (ev: PointerEvent) => {
+        const x = (ev.clientX - r.left) * k, y = (ev.clientY - r.top) * k;
+        if (mode === 'move') ed.onChange(id!, { x: Math.min(1, Math.max(0, o.x + (x - px) / W)), y: Math.min(1, Math.max(0, o.y + (y - py) / H)) }, 'pm-' + id);
+        else ed.onChange(id!, { size: Math.max(1, Math.min(100, (o.size * Math.hypot(x - b0.cx, y - b0.cy)) / d0)) }, 'ps-' + id);
+      };
+      const up = () => { c.removeEventListener('pointermove', move); c.removeEventListener('pointerup', up); };
+      c.addEventListener('pointermove', move);
+      c.addEventListener('pointerup', up);
+    };
+
     return (
       <div>
         <div className="stage">
-          <canvas ref={canvas} width={W} height={H} style={{ aspectRatio: `${W}/${H}` }} onClick={() => (playingRef.current ? pause() : play())} />
+          <canvas ref={canvas} width={W} height={H} style={{ aspectRatio: `${W}/${H}`, touchAction: 'none' }} onPointerDown={pointerDown} />
         </div>
         <div className="controls">
           <button className="btn primary" onClick={(e) => { e.currentTarget.blur(); playing ? pause() : play(); }} style={{ minWidth: 86 }}>{playing ? '❚❚ Pause' : '▶ Play'}</button>

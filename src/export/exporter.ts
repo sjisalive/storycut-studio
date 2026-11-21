@@ -107,7 +107,7 @@ export async function exportVideo(p: Project, preset: ExportPreset, aspect: Aspe
   const VF = (window as any).VideoFrame;
   const started = performance.now();
   for (let i = 0; i < frames; i++) {
-    if (signal?.aborted) { venc.close(); throw new DOMException('Cancelled', 'AbortError'); }
+    if (signal?.aborted) { venc.close(); await rt.dispose(); throw new DOMException('Cancelled', 'AbortError'); }
     if (encErr) throw encErr;
     const t = i / preset.fps;
     await rt.draw(ctx, p, t, w, h);
@@ -124,6 +124,7 @@ export async function exportVideo(p: Project, preset: ExportPreset, aspect: Aspe
   }
   await venc.flush();
   venc.close();
+  await rt.dispose();
 
   if (acodec) {
     onProgress(0.95, 'Adding sound…');
@@ -212,6 +213,7 @@ export async function exportThumbnail(p: Project, aspect: AspectKey, short = 108
   const first = p.scenes[0];
   const t = first ? Math.min(first.duration * 0.8, 2.6) : 0;
   await rt.draw(canvas.getContext('2d')!, p, t, w, h);
+  await rt.dispose();
   return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('PNG failed'))), 'image/png'));
 }
 
@@ -236,6 +238,7 @@ export async function exportGif(p: Project, aspect: AspectKey, onProgress: Progr
     onProgress(i / n, `GIF frame ${i + 1}/${n}`);
     if (i % 4 === 0) await sleep(0);
   }
+  await rt.dispose();
   gif.finish();
   return new Blob([gif.bytes() as BlobPart], { type: 'image/gif' });
 }

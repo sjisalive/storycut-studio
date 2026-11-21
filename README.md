@@ -77,7 +77,7 @@ Everything is on **one screen**, like a desktop video editor. Nothing is step by
 | **Fade in / out (video)** | From and to black, per clip |
 | **Fit / fill, rotate, mirror** | Fit shows the whole picture on a blurred background, which is useful for vertical clips in a wide video |
 | **Colour look** | Vivid, Warm, Cool, B&W, Vintage, Soft fade, plus brightness, contrast and saturation |
-| **Text & logos** | Text tab or `T`: big title, lower third, subtitle box, tag, plain text. Each has position, size, colours and animation (fade/pop/slide/word-by-word). Media → ⋯ → *Put on top as logo* for a watermark-style logo. |
+| **Text & logos** | Text tab or `T`: big title, lower third, subtitle box, tag, plain text. Drag on the preview to move, or drag the green corner to resize. Also a 9-point position grid. Every text has: **size**, **rotation** (straight, vertical ↑/↓, tilt, any angle), **font**, bold, italic, ALL CAPS, left/centre/right alignment, line spacing, text colour, box colour, **outline** (thickness and colour), shadow, opacity and animation (fade/pop/slide/word-by-word). Media → ⋯ → *Put on top as logo* for a logo, which you can also move, resize and rotate. |
 | **Captions** | Text tab → *From speech* (Whisper in the browser) or *From scene text*. Four caption styles, `.srt` export. |
 | **Voiceover** | Audio → *Record at playhead* |
 | **Frame grab** | 📷 saves the current frame as a PNG |
@@ -140,7 +140,7 @@ src/
 
 ### Technical notes
 - **Text** is drawn with Canvas 2D, which uses the browser's text shaper, so Devanagari, Bengali, Tamil, Telugu and Gujarati conjuncts are correct. ffmpeg drawtext is not used. Fonts are bundled (Inter, Poppins, Montserrat, Noto Sans + Devanagari/Bengali/Tamil/Telugu/Gujarati, Mukta, Hind, Playfair Display). Text auto-shrinks to the safe zone, and the timeline flags scenes with ⚠ when text had to shrink a lot.
-- **Export** renders frame by frame, seeks each video to the exact frame and encodes with WebCodecs. Audio is AAC where the browser has an AAC encoder (Chrome/Edge on Windows and macOS). Elsewhere it falls back to Opus in MP4, and the app shows a note.
+- **Export** renders frame by frame and encodes with WebCodecs. MP4/MOV clips are read with mp4box.js and decoded forward with the WebCodecs `VideoDecoder`, which is frame-exact and about 10–15× faster than seeking. Other formats (WebM, rotated phone clips) fall back to precise seeking. Audio is AAC where the browser has an AAC encoder (Chrome/Edge on Windows and macOS). Elsewhere it falls back to Opus in MP4, and the app shows a note.
 - **Fallback encoder:** if WebCodecs is missing, the app records in real time with `MediaRecorder`. That gives MP4 in Safari and recent Chrome, and WebM elsewhere. ffmpeg.wasm was left out on purpose. Its multithreaded build needs special server headers (COOP/COEP) that GitHub Pages can't send, and its 30 MB download would slow down every visit.
 - **Auto captions and person cut-out** load transformers.js and the model from a CDN the first time you use them, so that one time needs internet. Your audio and photos are processed locally and never uploaded. Everything else works fully offline once the page is loaded.
 

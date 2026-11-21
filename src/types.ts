@@ -119,6 +119,16 @@ export interface Overlay {
   bg: string; // '' = none / style panel
   anim: 'fade' | 'pop' | 'slide' | 'type' | 'none';
   opacity: number;
+  rotate?: number; // degrees, -180 … 180 (90 / -90 = vertical text)
+  font?: string; // '' = style font
+  bold?: boolean;
+  italic?: boolean;
+  align?: 'left' | 'center' | 'right';
+  outline?: number; // outline thickness, % of text size
+  outlineColor?: string;
+  shadow?: boolean;
+  upper?: boolean; // ALL CAPS
+  spacing?: number; // line spacing multiplier
 }
 
 /** A sound on the music or voice track. */

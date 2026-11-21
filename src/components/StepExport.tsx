@@ -28,7 +28,11 @@ export function StepExport({ project: full, title, quick }: { project: Project; 
   const { total } = timeline(p);
   const base = (p.name.replace(/[^\p{L}\p{N}\- ]+/gu, '').trim().replace(/\s+/g, '-') || 'video') + (onlyRange && hasRange ? '-part' : '');
   const formats: AspectKey[] = [p.aspect, ...extra.filter((a) => a !== p.aspect)];
-  const chosen = mode === 'size' ? presetForSize(mb, total) : preset;
+  // Never upscale a single clip beyond its own size when compressing it.
+  const src = quick ? p.media.find((m) => m.id === p.scenes[0]?.mediaIds[0]) : undefined;
+  const srcShort = src ? Math.min(src.width, src.height) - (Math.min(src.width, src.height) % 2) : Infinity;
+  const base0 = mode === 'size' ? presetForSize(mb, total) : preset;
+  const chosen = srcShort < base0.short ? { ...base0, short: srcShort } : base0;
 
   const run = async () => {
     setBusy(true); setErr('');

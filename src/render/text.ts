@@ -29,7 +29,7 @@ export function parseRich(line: string): RichWord[] {
 }
 export const stripRich = (s: string) => s.replace(/[*_]/g, '');
 
-export const fontString = (family: string, weight: number, size: number) => `${weight} ${Math.round(size)}px ${fontStack(family)}`;
+export const fontString = (family: string, weight: number | string, size: number) => `${weight} ${Math.round(size)}px ${fontStack(family)}`;
 
 const widthCache = new Map<string, number>();
 function measure(ctx: CanvasRenderingContext2D, font: string, s: string) {
@@ -52,7 +52,7 @@ const fitCache = new Map<string, FitResult>();
  * Each input line starts a new row; long lines wrap at spaces.
  */
 export function fitRich(
-  ctx: CanvasRenderingContext2D, lines: string[], family: string, weight: number,
+  ctx: CanvasRenderingContext2D, lines: string[], family: string, weight: number | string,
   maxW: number, maxH: number, maxSize: number, minSize: number, lineHeight = 1.18, maxRows = 6,
 ): FitResult {
   const key = [lines.join('\n'), family, weight, Math.round(maxW), Math.round(maxH), Math.round(maxSize), Math.round(minSize), lineHeight, maxRows].join('|');
@@ -101,7 +101,7 @@ export interface WordAnim { alpha: number; scale: number; dx: number; dy: number
 /** Draw a fitted block. (x, y) is the anchor: top-left / top-centre / top-right by align. */
 export function drawFit(
   ctx: CanvasRenderingContext2D, fit: FitResult, x: number, y: number, align: 'left' | 'center' | 'right',
-  colors: [string, string, string], anim?: (i: number, total: number) => WordAnim, shadow?: string,
+  colors: [string, string, string], anim?: (i: number, total: number) => WordAnim, shadow?: string, stroke?: [string, number],
 ) {
   const total = fit.rows.reduce((n, r) => n + r.words.length, 0);
   ctx.save();
@@ -122,9 +122,11 @@ export function drawFit(
         ctx.save();
         ctx.translate(cx + a.dx, cy + a.dy);
         ctx.scale(a.scale, a.scale);
+        if (stroke) { ctx.lineJoin = 'round'; ctx.strokeStyle = stroke[0]; ctx.lineWidth = stroke[1]; ctx.strokeText(w.w, -w.width / 2, fit.size * 0.35); }
         ctx.fillText(w.w, -w.width / 2, fit.size * 0.35);
         ctx.restore();
       } else {
+        if (stroke) { ctx.save(); ctx.shadowColor = 'transparent'; ctx.lineJoin = 'round'; ctx.strokeStyle = stroke[0]; ctx.lineWidth = stroke[1]; ctx.strokeText(w.w, rx + w.x, by); ctx.restore(); }
         ctx.fillText(w.w, rx + w.x, by);
       }
     }

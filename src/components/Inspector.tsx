@@ -3,6 +3,7 @@ import type { AudioItem, ClipLook, LookPreset, MediaRole, Overlay, Scene } from 
 import { detachAudio, itemEnd, joinNext } from '../edit';
 import { timeline } from '../render/engine';
 import { SceneEditor } from './SceneEditor';
+import { FONTS } from '../presets';
 import { More, Note } from './common';
 import type { Sel } from './MultiTimeline';
 import { useState } from 'react';
@@ -171,6 +172,14 @@ function OverlayEditor({ store, o, onDone }: { store: Store; o: Overlay; onDone:
         <label className="field">Starts (s)<input type="number" min={0} step={0.1} value={Math.round(o.at * 100) / 100} onChange={(e) => set({ at: Math.max(0, +e.target.value) }, 'at')} /></label>
         <label className="field">Length (s)<input type="number" min={0.3} step={0.1} value={Math.round(o.dur * 100) / 100} onChange={(e) => set({ dur: Math.max(0.3, +e.target.value) }, 'dur')} /></label>
       </div>
+      <div className="col" style={{ gap: 4 }}>
+        <span className="small muted">Place it (or drag it on the picture; drag the green corner to resize)</span>
+        <div className="pos-grid">
+          {[0.12, 0.5, 0.88].flatMap((y) => [0.15, 0.5, 0.85].map((x) => (
+            <button key={`${x}-${y}`} className={Math.abs(o.x - x) < 0.04 && Math.abs(o.y - y) < 0.04 ? 'on' : ''} onClick={() => set({ x, y })} title="Move here" />
+          )))}
+        </div>
+      </div>
       <label className="field">Position — across: {Math.round(o.x * 100)}%
         <input type="range" min={0} max={1} step={0.01} value={o.x} onChange={(e) => set({ x: +e.target.value }, 'x')} />
       </label>
@@ -180,6 +189,48 @@ function OverlayEditor({ store, o, onDone }: { store: Store; o: Overlay; onDone:
       <label className="field">Size: {o.size}
         <input type="range" min={o.kind === 'image' ? 3 : 1.5} max={o.kind === 'image' ? 100 : 20} step={0.1} value={o.size} onChange={(e) => set({ size: +e.target.value }, 'size')} />
       </label>
+      <label className="field">Rotate: {o.rotate ?? 0}°
+        <input type="range" min={-180} max={180} step={1} value={o.rotate ?? 0} onChange={(e) => set({ rotate: +e.target.value }, 'rot')} />
+      </label>
+      <div className="row" style={{ gap: 4 }}>
+        {[[0, 'Straight'], [-90, 'Vertical ↑'], [90, 'Vertical ↓'], [-8, 'Tilt'], [180, 'Upside down']].map(([v, l]) => (
+          <button key={String(v)} className={`btn small ${(o.rotate ?? 0) === v ? 'primary' : ''}`} onClick={() => set({ rotate: v as number })}>{l}</button>
+        ))}
+      </div>
+      {o.kind === 'text' && (
+        <>
+          <div className="grid g2">
+            <label className="field">Font
+              <select value={o.font ?? ''} onChange={(e) => set({ font: e.target.value || undefined })}>
+                <option value="">Style font ({o.preset === 'caption' ? p.style.fontBody : p.style.fontHead})</option>
+                {FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </label>
+            <label className="field">Line spacing: {(o.spacing ?? 1.15).toFixed(2)}
+              <input type="range" min={0.8} max={2} step={0.05} value={o.spacing ?? 1.15} onChange={(e) => set({ spacing: +e.target.value }, 'sp')} />
+            </label>
+          </div>
+          <div className="row" style={{ gap: 4 }}>
+            <button className={`btn small ${o.bold !== false ? 'primary' : ''}`} style={{ fontWeight: 800 }} onClick={() => set({ bold: o.bold === false })} title="Bold">B</button>
+            <button className={`btn small ${o.italic ? 'primary' : ''}`} style={{ fontStyle: 'italic' }} onClick={() => set({ italic: !o.italic })} title="Italic">I</button>
+            <button className={`btn small ${o.upper ? 'primary' : ''}`} onClick={() => set({ upper: !o.upper })} title="All capitals">AA</button>
+            <span className="sep-v" />
+            {(['left', 'center', 'right'] as const).map((a) => (
+              <button key={a} className={`btn small ${(o.align ?? (o.preset === 'lower' ? 'left' : 'center')) === a ? 'primary' : ''}`} onClick={() => set({ align: a })} title={`Align ${a}`}>{a === 'left' ? '⟸' : a === 'center' ? '⟺' : '⟹'}</button>
+            ))}
+            <span className="sep-v" />
+            <button className={`btn small ${o.shadow ?? o.preset === 'title' ? 'primary' : ''}`} onClick={() => set({ shadow: !(o.shadow ?? o.preset === 'title') })} title="Shadow">Shadow</button>
+          </div>
+          <div className="grid g2">
+            <label className="field">Outline: {o.outline ?? 0}
+              <input type="range" min={0} max={12} step={0.5} value={o.outline ?? 0} onChange={(e) => set({ outline: +e.target.value }, 'ol')} />
+            </label>
+            <label className="field">Outline colour
+              <input type="color" value={o.outlineColor || '#000000'} onChange={(e) => set({ outlineColor: e.target.value }, 'olc')} style={{ width: 40, height: 30, border: '1px solid var(--line)', borderRadius: 6 }} />
+            </label>
+          </div>
+        </>
+      )}
       {o.kind === 'text' && (
         <div className="grid g2">
           <label className="field">Text colour

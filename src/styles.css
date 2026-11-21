@@ -264,3 +264,7 @@ canvas.frame { width: 100%; height: auto; border-radius: 8px; background: #111; 
 }
 label.row { flex-wrap: nowrap; }
 @media (max-width: 640px) { .header { flex-wrap: wrap; row-gap: 6px; } .header .spacer { display: none; } }
+.pos-grid { display: grid; grid-template-columns: repeat(3, 28px); gap: 4px; }
+.pos-grid button { height: 20px; border: 1px solid var(--line); border-radius: 4px; background: #fff; cursor: pointer; }
+.pos-grid button.on, .pos-grid button:hover { background: var(--accent); border-color: var(--check); }
+.sep-v { width: 1px; height: 22px; background: var(--line); margin: 0 2px; }

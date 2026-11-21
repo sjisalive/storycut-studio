@@ -55,6 +55,8 @@ export default function App() {
   const [busy, setBusy] = useState('');
   const dirty = useRef(false);
   const { total } = timeline(p);
+  // Test hook (only with ?test in the address) so automated checks can read the project.
+  if (typeof location !== 'undefined' && location.search.includes('test')) (window as any).__sc = { store, time, sel };
 
   const say = useCallback((m: string) => { setToast(m); window.clearTimeout((say as any).t); (say as any).t = window.setTimeout(() => setToast(''), 3500); }, []);
   const onTime = useCallback((t: number) => setTime(t), []);
@@ -136,7 +138,9 @@ export default function App() {
   const snapshot = async () => {
     const { w, h } = dims(p.aspect, 1080);
     const c = document.createElement('canvas'); c.width = w; c.height = h;
-    await new ExactRuntime().draw(c.getContext('2d')!, p, time, w, h);
+    const rt = new ExactRuntime();
+    await rt.draw(c.getContext('2d')!, p, time, w, h);
+    await rt.dispose();
     c.toBlob((b) => b && download(b, `frame-${fmtTime(time).replace(/[:.]/g, '-')}.png`), 'image/png');
   };
   void renderFrame;
@@ -222,7 +226,11 @@ export default function App() {
               <span>Drop clips in <b>Media</b> and press ＋ (or “Merge all onto timeline”), or press <b>✨ Auto video</b> to build one from a list or open a ready example.</span>
             </div>
           )}
-          <Player ref={player} project={p} onTime={onTime} onWarnings={onWarnings} />
+          <Player ref={player} project={p} onTime={onTime} onWarnings={onWarnings} edit={{
+            selected: sel?.kind === 'overlay' ? sel.id : undefined,
+            onPick: (id) => { if (id) { setSel({ kind: 'overlay', id }); } else if (sel?.kind === 'overlay') setSel(null); },
+            onChange: (id, patch, key) => update((c) => ({ ...c, overlays: c.overlays.map((o) => (o.id === id ? { ...o, ...patch } : o)) }), key),
+          }} />
           <div className="toolbar">
             <button className="tb" onClick={split} title="Split at playhead (S)">✂<span>Split</span></button>
             <button className="tb" onClick={deleteSel} disabled={!sel} title="Delete selected (Del)">🗑<span>Delete</span></button>

@@ -86,6 +86,10 @@ export function captionsFromScenes(p: Project): Caption[] {
     ).trim();
     if (text) caps.push({ id: uid('c'), start: starts[i] + 0.2, end: starts[i] + s.duration - 0.1, text });
   });
+  for (const o of p.overlays ?? []) {
+    if (o.kind === 'text' && o.text.trim()) caps.push({ id: uid('c'), start: o.at, end: o.at + o.dur, text: stripRich(o.text).replace(/\n/g, ' ') });
+  }
+  caps.sort((a, b) => a.start - b.start);
   return caps;
 }
 
