@@ -778,7 +778,135 @@ export function gridRects(layout: string, portrait: boolean): R4[] {
 }
 export const gridCount = (layout: string) => gridRects(layout, false).length;
 
+// ---- angled / custom dividers
+export type SplitLineT = { x: number; y: number; angle: number };
+type Pt = [number, number];
+
+/** Dividers for a straight layout leaned by `tilt` degrees (null when that layout can't be tilted). */
+export function presetCuts(layout: string, tilt: number, portrait: boolean): SplitLineT[] | null {
+  const v = (x: number) => ({ x, y: 0.5, angle: tilt });
+  const h = (y: number) => ({ x: 0.5, y, angle: 90 + tilt });
+  switch (layout) {
+    case '2h': return [v(0.5)];
+    case '2v': return [h(0.5)];
+    case '3c': return portrait ? [h(1 / 3), h(2 / 3)] : [v(1 / 3), v(2 / 3)];
+    case '4': return [v(0.5), h(0.5)];
+    case '6': return portrait ? [v(0.5), h(1 / 3), h(2 / 3)] : [v(1 / 3), v(2 / 3), h(0.5)];
+    default: return null;
+  }
+}
+export const canTilt = (layout: string) => ['2h', '2v', '3c', '4', '6'].includes(layout);
+
+export function cutsFor(scene: Scene, W: number, H: number): SplitLineT[] | null {
+  if (scene.cuts?.length) return scene.cuts;
+  if (scene.tilt) return presetCuts(scene.layout ?? '2h', scene.tilt, H > W * 1.1);
+  return null;
+}
+
+/** Split the picture into the areas between the divider lines (pixel polygons, in reading order). */
+export function linePolys(cuts: SplitLineT[], W: number, H: number): Pt[][] {
+  let polys: Pt[][] = [[[0, 0], [W, 0], [W, H], [0, H]]];
+  for (const c of cuts) {
+    const a = (c.angle * Math.PI) / 180;
+    const px = c.x * W, py = c.y * H, dx = -Math.sin(a), dy = Math.cos(a);
+    const side = (q: Pt) => dx * (q[1] - py) - dy * (q[0] - px);
+    const next: Pt[][] = [];
+    for (const poly of polys) {
+      const A: Pt[] = [], B: Pt[] = [];
+      for (let i = 0; i < poly.length; i++) {
+        const p0 = poly[i], p1 = poly[(i + 1) % poly.length];
+        const s0 = side(p0), s1 = side(p1);
+        if (s0 >= 0) A.push(p0); if (s0 <= 0) B.push(p0);
+        if ((s0 > 0 && s1 < 0) || (s0 < 0 && s1 > 0)) {
+          const t = s0 / (s0 - s1);
+          const q: Pt = [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t];
+          A.push(q); B.push(q);
+        }
+      }
+      for (const r of [A, B]) if (r.length >= 3 && Math.abs(area(r)) > W * H * 0.004) next.push(r);
+    }
+    polys = next;
+  }
+  const cen = (r: Pt[]) => [r.reduce((n, q) => n + q[0], 0) / r.length, r.reduce((n, q) => n + q[1], 0) / r.length];
+  return polys.sort((a, b) => { const ca = cen(a), cb = cen(b); const row = Math.round(ca[1] / (H / 3)) - Math.round(cb[1] / (H / 3)); return row || ca[0] - cb[0]; });
+}
+function area(r: Pt[]) { let s = 0; for (let i = 0; i < r.length; i++) { const a = r[i], b = r[(i + 1) % r.length]; s += a[0] * b[1] - b[0] * a[1]; } return s / 2; }
+
+/** How many frames a split-screen scene has for a given picture size. */
+export function cellCount(scene: Scene, W: number, H: number) {
+  const cuts = cutsFor(scene, W, H);
+  return cuts ? linePolys(cuts, W, H).length : gridCount(scene.layout ?? '2h');
+}
+
+/** Ready-made angled designs (angles worked out for the picture's shape). */
+export function anglePresets(W: number, H: number): [string, SplitLineT[]][] {
+  const corner = (Math.atan2(W, H) * 180) / Math.PI;
+  return [
+    ['Slash ╱', [{ x: 0.5, y: 0.5, angle: 20 }]],
+    ['Backslash ╲', [{ x: 0.5, y: 0.5, angle: -20 }]],
+    ['Corner to corner', [{ x: 0.5, y: 0.5, angle: corner }]],
+    ['X — four triangles', [{ x: 0.5, y: 0.5, angle: corner }, { x: 0.5, y: 0.5, angle: -corner }]],
+    ['Three slanted', [{ x: 1 / 3, y: 0.5, angle: 15 }, { x: 2 / 3, y: 0.5, angle: 15 }]],
+    ['Tilted 2×2', [{ x: 0.5, y: 0.5, angle: 12 }, { x: 0.5, y: 0.5, angle: 102 }]],
+    ['Slanted top / bottom', [{ x: 0.5, y: 0.5, angle: 98 }]],
+    ['Opposite slants', [{ x: 1 / 3, y: 0.5, angle: 15 }, { x: 2 / 3, y: 0.5, angle: -15 }]],
+  ];
+}
+
+/** Split screen with dividers at any angle. */
+function sceneGridLines(e: E, cuts: SplitLineT[]) {
+  const { ctx, W, H, u, scene, style } = e;
+  const c = style.colors;
+  const design = scene.frame ?? 'clean';
+  const polys = linePolys(cuts, W, H);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const cells = scene.cells ?? [];
+  polys.forEach((poly, i) => {
+    const cell = cells[i];
+    const xs = poly.map((q) => q[0]), ys = poly.map((q) => q[1]);
+    const x = Math.min(...xs), y = Math.min(...ys), w = Math.max(...xs) - x, h = Math.max(...ys) - y;
+    const k = scene.noIntro ? 1 : clamp((e.lt - i * 0.1) / (0.4 / style.motion), 0, 1);
+    ctx.save();
+    ctx.globalAlpha = design === 'clean' ? 1 : Math.min(1, 0.25 + k);
+    ctx.beginPath(); poly.forEach((q, j) => (j ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.clip();
+    if (cell?.mediaId) {
+      const keep = e.scene;
+      e.scene = { ...keep, fit: cell.fit ?? 'fill' };
+      cover(e, cell.mediaId, x, y, w, h, mediaTime(e, cell.mediaId, e.lt, cell.clipIn), cell.zoom ?? 1.02, 0, scene.id + i);
+      e.scene = keep;
+    } else {
+      ctx.fillStyle = hexA(c.bg2, 0.95); ctx.fillRect(x, y, w, h);
+      const cx = xs.reduce((a, b) => a + b, 0) / xs.length, cy = ys.reduce((a, b) => a + b, 0) / ys.length;
+      ctx.fillStyle = hexA(c.text, 0.6); ctx.font = fontString(style.fontBody, 600, Math.max(12, Math.min(w, h) * 0.08));
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(`Frame ${i + 1}`, cx, cy);
+    }
+    ctx.restore();
+  });
+  // the divider lines themselves
+  const gapDefault: Record<string, number> = { clean: 0.7, neon: 0.5, diagonal: 0.9, rounded: 1.4, polaroid: 1.6, circle: 1.2, tilted: 1.4, film: 1.2 };
+  const g = (scene.gap ?? gapDefault[design] ?? 0.8) * u;
+  const col = scene.border || (design === 'clean' ? '#000000' : design === 'neon' ? c.accent : design === 'diagonal' ? c.accent : '#ffffff');
+  if (g > 0) {
+    ctx.save();
+    ctx.lineCap = 'butt';
+    const len = Math.hypot(W, H);
+    const reveal = scene.noIntro ? 1 : easeOutCubic(clamp(e.lt / (0.5 / style.motion), 0, 1));
+    for (const cut of cuts) {
+      const a = (cut.angle * Math.PI) / 180;
+      const px = cut.x * W, py = cut.y * H, dx = -Math.sin(a), dy = Math.cos(a);
+      const L = design === 'clean' ? len : len * reveal;
+      ctx.beginPath(); ctx.moveTo(px - dx * L, py - dy * L); ctx.lineTo(px + dx * L, py + dy * L);
+      ctx.lineWidth = g; ctx.strokeStyle = col;
+      if (design === 'neon') { ctx.shadowColor = col; ctx.shadowBlur = 2.5 * u; ctx.stroke(); ctx.shadowColor = c.accent2; }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
 function sceneGrid(e: E) {
+  const lineCuts = cutsFor(e.scene, e.W, e.H);
+  if (lineCuts) { sceneGridLines(e, lineCuts); return; }
   const { ctx, W, H, u, scene, style } = e;
   const c = style.colors;
   const design = scene.frame ?? 'clean';
@@ -806,7 +934,7 @@ function sceneGrid(e: E) {
     if (pip && i === 0) { x = 0; y = 0; w = W; h = H; }
     if (design === 'film') { y += h * 0.07; h *= 0.86; }
     // intro: frames pop in one after another
-    const k = clamp((e.lt - i * 0.12) / (0.45 / style.motion), 0, 1);
+    const k = scene.noIntro ? 1 : clamp((e.lt - i * 0.12) / (0.45 / style.motion), 0, 1);
     const ek = easeOutBack(k);
     const sc = (pip && i === 0) || design === 'clean' || design === 'diagonal' ? 1 : 0.85 + 0.15 * ek;
     const tilt = design === 'tilted' ? (i % 2 ? 1 : -1) * (2.5 + (i % 3)) * (Math.PI / 180) : design === 'polaroid' ? (i % 2 ? 1.2 : -1.2) * (Math.PI / 180) : 0;

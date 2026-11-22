@@ -1,6 +1,6 @@
 // Pure editing operations on a project: split, delete a part (ripple),
 // trim, merge clips, cut on beats, detach sound, music helpers.
-import type { AudioItem, FrameDesign, GridCell, GridLayout, MediaItem, Overlay, Project, Scene } from './types';
+import type { AudioItem, FrameDesign, GridCell, GridLayout, MediaItem, Overlay, Project, Scene, SplitLine } from './types';
 import { defaultIn, gridCount, timeline, OVERLAY_SIZE } from './render/engine';
 import { uid } from './util';
 
@@ -44,7 +44,7 @@ function cutScene(s: Scene, local: number, media: MediaItem[]): [Scene, Scene] {
   const rate = s.speed ?? 1;
   const a: Scene = { ...s, duration: local, fadeOut: 0, transition: 'cut' };
   const b: Scene = { ...structuredClone(s), id: uid('s'), duration: s.duration - local, clipIn: effIn(s, media) + local * rate, fadeIn: 0, voiceId: undefined };
-  if (b.cells) b.cells = b.cells.map((c) => ({ ...c, clipIn: c.clipIn + local * rate }));
+  if (b.cells) { b.cells = b.cells.map((c) => ({ ...c, clipIn: c.clipIn + local * rate })); b.noIntro = true; }
   return [a, b];
 }
 
@@ -294,8 +294,7 @@ export const GRID_LAYOUTS: [GridLayout, string][] = [
   ['2h', 'Side by side'], ['2v', 'Top / bottom'], ['3l', 'Big + 2'], ['3r', '2 + big'], ['3c', 'Three'], ['4', 'Four (2×2)'], ['6', 'Six'], ['pip', 'Picture in picture'], ['pip2', 'Main + 2 small'],
 ];
 
-function makeCells(p: Project, layout: GridLayout, first: GridCell | undefined, others: string[]): GridCell[] {
-  const n = gridCount(layout);
+function makeCells(p: Project, n: number, first: GridCell | undefined, others: string[]): GridCell[] {
   const cells: GridCell[] = [];
   if (first) cells.push(first);
   for (const id of others) { if (cells.length >= n) break; if (!cells.some((c) => c.mediaId === id)) cells.push({ mediaId: id, clipIn: 0, sound: false }); }
@@ -312,7 +311,9 @@ function makeCells(p: Project, layout: GridLayout, first: GridCell | undefined, 
 }
 
 /** Turn the marked part into a split screen: the video already there becomes frame 1. */
-export function gridFromRange(p: Project, a: number, b: number, layout: GridLayout, design: FrameDesign, picks: string[] = []): { project: Project; id: string } {
+export interface GridExtra { cuts?: SplitLine[]; tilt?: number; count?: number }
+
+export function gridFromRange(p: Project, a: number, b: number, layout: GridLayout, design: FrameDesign, picks: string[] = [], extra: GridExtra = {}): { project: Project; id: string } {
   let q = splitAt(p, a) ?? p;
   q = splitAt(q, b) ?? q;
   const { starts } = timeline(q);
@@ -320,8 +321,8 @@ export function gridFromRange(p: Project, a: number, b: number, layout: GridLayo
   const firstScene = inside[0]?.s;
   const firstMedia = firstScene ? q.media.find((m) => m.id === (firstScene.cells?.[0]?.mediaId ?? firstScene.mediaIds[0])) : undefined;
   const first: GridCell | undefined = firstMedia && firstMedia.kind !== 'audio' ? { mediaId: firstMedia.id, clipIn: firstScene!.cells?.[0]?.clipIn ?? effIn(firstScene!, q.media), sound: !!firstMedia.hasAudio && !firstScene!.muted } : undefined;
-  const cells = makeCells(q, layout, first, picks);
-  const grid: Scene = { id: uid('s'), kind: 'grid', duration: Math.round((b - a) * 1000) / 1000, transition: 'cut', texts: {}, mediaIds: cells.map((c) => c.mediaId), layout, frame: design, cells, speed: 1 };
+  const cells = makeCells(q, extra.count ?? gridCount(layout), first, picks);
+  const grid: Scene = { id: uid('s'), kind: 'grid', duration: Math.round((b - a) * 1000) / 1000, transition: 'cut', texts: {}, mediaIds: cells.map((c) => c.mediaId), layout, frame: design, cells, speed: 1, cuts: extra.cuts, tilt: extra.tilt };
   const scenes = [...q.scenes];
   if (inside.length) scenes.splice(inside[0].i, inside.length, grid);
   else scenes.push(grid);
@@ -329,11 +330,11 @@ export function gridFromRange(p: Project, a: number, b: number, layout: GridLayo
 }
 
 /** Insert a new split screen after the clip under the playhead. */
-export function insertGrid(p: Project, at: number, layout: GridLayout, design: FrameDesign, picks: string[] = [], dur = 5): { project: Project; id: string } {
-  const cells = makeCells(p, layout, undefined, picks);
+export function insertGrid(p: Project, at: number, layout: GridLayout, design: FrameDesign, picks: string[] = [], dur = 5, extra: GridExtra = {}): { project: Project; id: string } {
+  const cells = makeCells(p, extra.count ?? gridCount(layout), undefined, picks);
   const vids = cells.map((c) => p.media.find((m) => m.id === c.mediaId)).filter((m) => m?.kind === 'video').map((m) => m!.duration);
   const d = vids.length ? Math.max(2, Math.min(dur * 2, Math.min(...vids))) : dur;
-  const grid: Scene = { id: uid('s'), kind: 'grid', duration: Math.round(d * 100) / 100, transition: 'cut', texts: {}, mediaIds: cells.map((c) => c.mediaId), layout, frame: design, cells, speed: 1 };
+  const grid: Scene = { id: uid('s'), kind: 'grid', duration: Math.round(d * 100) / 100, transition: 'cut', texts: {}, mediaIds: cells.map((c) => c.mediaId), layout, frame: design, cells, speed: 1, cuts: extra.cuts, tilt: extra.tilt };
   const hit = sceneAt(p, at);
   const scenes = [...p.scenes];
   scenes.splice(hit ? hit.i + 1 : scenes.length, 0, grid);

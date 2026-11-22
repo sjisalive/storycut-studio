@@ -102,7 +102,13 @@ export interface Scene {
   radius?: number; // rounded corners, % of the short side
   border?: string; // frame border colour ('' = none)
   frame?: FrameDesign;
+  tilt?: number; // degrees: lean the dividers of a straight layout
+  noIntro?: boolean; // continues straight on from the piece before it (after a split): no opening animation
+  cuts?: SplitLine[]; // custom dividers (any number, any angle); when set, frames are the areas between them
 }
+
+/** A divider line across the whole picture: passes through (x, y) (0..1), angle in degrees (0 = upright, + leans like "/"). */
+export interface SplitLine { x: number; y: number; angle: number }
 
 export type FrameDesign = 'clean' | 'rounded' | 'polaroid' | 'neon' | 'diagonal' | 'circle' | 'tilted' | 'film';
 
