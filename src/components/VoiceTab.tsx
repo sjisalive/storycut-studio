@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { isVoiceDownloaded, sentences, speak, VOICES } from '../audio/tts';
 import { Note, Progress } from './common';
+import { DEFAULT_STUDIO, processSound } from '../audio/studio';
 import { BufWave, FmtSelect, saveBuffer, secs, useBufferPlayer, type AudioFmt } from './audioUi';
 
 const LANGS: [string, string][] = [['hi', 'हिन्दी Hindi'], ['en', 'English'], ['ml', 'മലയാളം Malayalam'], ['ne', 'नेपाली Nepali']];
@@ -17,7 +18,9 @@ export function VoiceTab({ onStudio, onTimeline }: {
   onTimeline: (buf: AudioBuffer, name: string) => Promise<void>;
 }) {
   const [lang, setLang] = useState('hi');
-  const [voice, setVoice] = useState('hi_IN-pratham-medium');
+  const [voice, setVoice] = useState('kokoro:hm_omega');
+  const [tone, setTone] = useState<'natural' | 'deep' | 'deeper'>('deep');
+  const [polish, setPolish] = useState(true);
   const [text, setText] = useState('');
   const [speed, setSpeed] = useState(1);
   const [variation, setVariation] = useState(0.5);
@@ -38,13 +41,21 @@ export function VoiceTab({ onStudio, onTimeline }: {
   const voices = VOICES.filter((v) => v.lang === lang);
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   const estimate = words / (2.4 * speed) + sentences(text).length * 0.5 * pause;
-  const name = `voiceover-${VOICES.find((v) => v.id === voice)?.label.split(' ')[0].toLowerCase() ?? 'voice'}`;
+  const name = `voiceover-${VOICES.find((v) => v.id === voice)?.label.split(' ')[0].toLowerCase() ?? 'voice'}${tone !== 'natural' ? `-${tone}` : ''}`;
 
   const make = async () => {
     setErr(''); setMsg(''); pl.stop();
     setBusy('Starting…'); setPct(0);
     try {
-      const b = await speak(text, voice, { speed, variation, pause }, (stage, p) => { setBusy(stage); setPct(p); });
+      let b = await speak(text, voice, { speed, variation, pause }, (stage, p) => { setBusy(stage); setPct(p); });
+      if (tone !== 'natural' || polish) {
+        // deeper voice keeps its natural character (formant-preserving pitch shift) + warm, even studio finish
+        b = await processSound(b, {
+          ...DEFAULT_STUDIO,
+          ...(tone === 'deep' ? { pitch: -1.5, bass: 2.5 } : tone === 'deeper' ? { pitch: -3, bass: 4 } : {}),
+          ...(polish ? { lowCut: 60, presence: 1.5, treble: 1, compress: 0.4, loudness: -16 } : {}),
+        }, (stage, p) => { setBusy(stage === 'Done' ? 'Finishing…' : stage); setPct(p); });
+      }
       setOut(b);
     } catch (e: any) {
       setErr(/fetch|network|Failed/i.test(String(e?.message ?? e)) ? 'Could not download the voice. Check the internet connection and try again (it is needed only the first time for each voice).' : `Could not make the voice-over: ${e?.message ?? e}`);
@@ -96,28 +107,36 @@ export function VoiceTab({ onStudio, onTimeline }: {
       <aside className="tool-side card">
         <b className="small">Voice</b>
         <div className="col" style={{ gap: 6, marginTop: 6 }}>
-          {voices.map((v) => (
+          {voices.map((v, i) => (<div key={v.id} className="col" style={{ gap: 6 }}>
+            {(i === 0 || voices[i - 1].hd !== v.hd) && <div className="studio-group" style={{ marginTop: i ? 6 : 0, borderTop: i ? undefined : 0, paddingTop: i ? undefined : 0 }}>{v.hd ? '✨ Natural HD — most human' : 'Light — small download'}</div>}
             <label key={v.id} className={`voice-card ${voice === v.id ? 'on' : ''}`}>
               <input type="radio" name="voice" checked={voice === v.id} onChange={() => setVoice(v.id)} />
               <span className="grow">
                 <b>{v.gender === 'male' ? '👨' : '👩'} {v.label}</b>
                 <span className="small muted"> {v.gender}{v.note ? ` · ${v.note}` : ''}</span>
               </span>
-              <span className="small muted">{have[v.id] ? '✓ ready' : '≈60 MB once'}</span>
+              <span className="small muted">{have[v.id] ? '✓ ready' : v.hd ? '≈90 MB once' : '≈60 MB once'}</span>
             </label>
-          ))}
+          </div>))}
         </div>
         <label className="field small" style={{ marginTop: 14 }}>Speed <b>{speed.toFixed(2)}×</b>
           <input type="range" min={0.6} max={1.6} step={0.05} value={speed} onChange={(e) => setSpeed(+e.target.value)} />
         </label>
-        <label className="field small">Expression <b>{variation < 0.3 ? 'flat' : variation < 0.7 ? 'natural' : 'lively'}</b>
+        <div className="small" style={{ marginBottom: 4 }}>Voice tone</div>
+        <div className="chips" style={{ marginBottom: 10 }}>
+          {([['natural', 'Natural'], ['deep', '🎙 Deep'], ['deeper', '🎙 Extra deep']] as const).map(([k, l]) => (
+            <button key={k} className={`chip ${tone === k ? 'on' : ''}`} onClick={() => setTone(k)}>{l}</button>
+          ))}
+        </div>
+        <label className="row small" style={{ marginBottom: 10 }}><input type="checkbox" checked={polish} onChange={(e) => setPolish(e.target.checked)} /> Studio finish (warm, even level, −16 LUFS)</label>
+        {!VOICES.find((v) => v.id === voice)?.hd && <label className="field small">Expression <b>{variation < 0.3 ? 'flat' : variation < 0.7 ? 'natural' : 'lively'}</b>
           <input type="range" min={0} max={1} step={0.05} value={variation} onChange={(e) => setVariation(+e.target.value)} />
-        </label>
+        </label>}
         <label className="field small">Pause between sentences <b>{(pause).toFixed(1)} s</b>
           <input type="range" min={0} max={2} step={0.1} value={pause} onChange={(e) => setPause(+e.target.value)} />
         </label>
         <p className="small muted" style={{ marginTop: 12 }}>
-          Voices run on this computer (no account, nothing uploaded). Each voice downloads once (about 60 MB) the first time you use it and then works offline.
+          Voices run on this computer (no account, nothing uploaded). Natural HD voices share one download (about 90 MB), light voices about 60 MB each; after the first time they work offline. Deep tones lower the pitch while keeping the voice natural.
           For a deeper tone, more bass, treble or a different pace, press <b>Edit sound</b> after making the voice-over.
         </p>
       </aside>

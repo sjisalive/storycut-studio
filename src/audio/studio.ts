@@ -10,6 +10,7 @@ export interface StudioSettings {
   bass: number; mid: number; presence: number; treble: number; // dB
   speed: number; // 0.5–2 (pitch kept)
   pitch: number; // semitones −12…+12
+  character?: boolean; // false = cartoon pitch change (voice character changes too)
   compress: number; // 0–1
   echo: number; // 0–1
   reverb: number; // 0–1
@@ -28,7 +29,7 @@ export const DEFAULT_STUDIO: StudioSettings = {
 
 export const STUDIO_PRESETS: [string, string, Partial<StudioSettings>][] = [
   ['clear', '✨ Clear voice-over', { lowCut: 90, mid: -1, presence: 3, treble: 3, compress: 0.5, loudness: -16, maxPause: 0.8 }],
-  ['deep', '🎙 Deep voice', { pitch: -2, bass: 4, lowCut: 60, presence: 1, compress: 0.4, loudness: -16 }],
+  ['deep', '🎙 Deep voice', { pitch: -2.5, bass: 4, lowCut: 50, mid: -1, presence: 1.5, compress: 0.45, loudness: -16 }],
   ['radio', '📻 Radio announcer', { lowCut: 100, bass: 3, mid: -2, presence: 4, treble: 2, compress: 0.85, loudness: -14 }],
   ['podcast', '🎧 Warm podcast', { lowCut: 70, bass: 2, mid: 0, presence: 1.5, treble: -1, compress: 0.6, loudness: -16 }],
   ['crisp', '🔆 Bright & crisp', { lowCut: 90, presence: 3, treble: 5, compress: 0.4, loudness: -16 }],
@@ -37,18 +38,18 @@ export const STUDIO_PRESETS: [string, string, Partial<StudioSettings>][] = [
   ['echo', '🔁 Echo', { echo: 0.45, loudness: -16 }],
   ['fast', '⏩ Faster (1.2×)', { speed: 1.2 }],
   ['calm', '🐢 Slower & calm (0.9×)', { speed: 0.9, maxPause: 0 }],
-  ['chip', '🐿 Chipmunk', { pitch: 6, speed: 1.05 }],
-  ['giant', '👹 Giant', { pitch: -6, bass: 3 }],
+  ['chip', '🐿 Chipmunk', { pitch: 6, speed: 1.05, character: false }],
+  ['giant', '👹 Giant', { pitch: -6, bass: 3, character: false }],
 ];
 
-function runStretch(channels: Float32Array[], sr: number, rate: number, maxPause: number, onProgress: (p: number) => void): Promise<Float32Array[]> {
-  if (Math.abs(rate - 1) < 1e-3 && maxPause <= 0) return Promise.resolve(channels);
+function runStretch(channels: Float32Array[], sr: number, rate: number, maxPause: number, onProgress: (p: number) => void, pitch = 0): Promise<Float32Array[]> {
+  if (Math.abs(rate - 1) < 1e-3 && maxPause <= 0 && !pitch) return Promise.resolve(channels);
   return new Promise((resolve, reject) => {
     const w = new Worker(new URL('./stretch.worker.ts', import.meta.url), { type: 'module' });
     w.onmessage = (e) => { if (e.data.progress !== undefined) onProgress(e.data.progress); else { w.terminate(); resolve(e.data.channels); } };
     w.onerror = (e) => { w.terminate(); reject(new Error(e.message)); };
     const copies = channels.map((c) => c.slice());
-    w.postMessage({ channels: copies, sampleRate: sr, rate, maxPause }, copies.map((c) => c.buffer));
+    w.postMessage({ channels: copies, sampleRate: sr, rate, maxPause, pitch }, copies.map((c) => c.buffer));
   });
 }
 
@@ -69,13 +70,15 @@ export async function processSound(input: AudioBuffer, s: StudioSettings, onProg
     buf = (await separateVoice(buf, 0.3, true, (p) => onProgress('Cleaning noise…', p))).voice;
   }
   const sr = buf.sampleRate;
-  const pitchF = Math.pow(2, s.pitch / 12);
+  // natural pitch change (keeps the voice's character) is done in the worker; the cartoon one by resampling
+  const natural = s.character !== false;
+  const pitchF = natural ? 1 : Math.pow(2, s.pitch / 12);
   // stretch so that after the pitch resample the length matches the chosen speed
   const rate = s.speed / pitchF;
   onProgress('Changing speed…', 0);
   let ch: Float32Array[] = Array.from({ length: buf.numberOfChannels }, (_, i) => buf.getChannelData(i));
   if (s.mono && ch.length > 1) { const m = new Float32Array(ch[0].length); for (let i = 0; i < m.length; i++) m[i] = (ch[0][i] + ch[1][i]) / 2; ch = [m]; }
-  ch = await runStretch(ch, sr, rate, s.maxPause, (p) => onProgress('Changing speed…', p));
+  ch = await runStretch(ch, sr, rate, s.maxPause, (p) => onProgress('Changing speed and pitch…', p), natural ? s.pitch : 0);
   const mid = new AudioBuffer({ length: Math.max(1, ch[0].length), numberOfChannels: ch.length, sampleRate: sr });
   ch.forEach((c, i) => mid.copyToChannel(c as Float32Array<ArrayBuffer>, i));
   // ---- filters & effects in an offline audio graph

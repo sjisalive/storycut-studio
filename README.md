@@ -102,14 +102,19 @@ Opens one page with the video type, ready examples, shape/length/language/style/
 1080p / 720p / Small file presets, or **compress to a target size**. Options: *only the marked part*, and extra versions in other shapes (16:9, 9:16, 1:1, 4:5) with text repositioned. Extras: thumbnail PNG, `.srt`, 6-second GIF, sound-only WAV.
 
 ### 🗣 Voice-over tab (text → speech)
-Type or paste a script in Hindi, English, Malayalam or Nepali and press **Make voice-over**. Voices: Hindi **Pratham** (male) and **Priyamvada** (female), plus several English voices (US/UK, male/female). Sliders for **speed**, **expression** (flat → lively) and **pause between sentences**. A full stop or `।` gives a short pause and a new line a longer one; numbers read best written as words.
+Type or paste a script in Hindi, English, Malayalam or Nepali and press **Make voice-over**.
+- **✨ Natural HD voices** (Kokoro): the most human-sounding — natural rhythm and intonation. Hindi **Omega** (male, deep), **Psi** (male), **Alpha** and **Beta** (female); English **Onyx** (deep US male), **Michael**, **George** (deep UK male), **Fable**, **Heart**, **Bella**, **Emma**. One shared download of ≈90 MB.
+- **Light voices** (Piper): Hindi Pratham / Priyamvada and more; smaller and faster, but more robotic.
+- **Voice tone:** Natural, **Deep** or **Extra deep** — lowers the pitch while keeping the voice's own character (formant-preserving PSOLA), with added warmth.
+- **Studio finish:** warm EQ, even level and −16 LUFS loudness, on by default.
+- Sliders for **speed** and **pause between sentences** (and **expression** for light voices). A full stop or `।` gives a short pause and a new line a longer one; numbers read best written as words.
 Then **Save** (MP3 192/320 kbps or WAV), **＋ Add to video** (goes on the Voice track at the playhead and the music dips under it), or **Edit sound** to open it in Sound Studio.
-The voices are open-source Piper models that run on your computer — nothing is uploaded and no account is needed. Each voice downloads once (≈60 MB from Hugging Face) and then works offline.
+The voices are open-source models (Kokoro-82M, Apache-2.0; Piper, MIT) that run on your computer — nothing is uploaded and no account is needed. They download once from Hugging Face and then work offline. HD voices take roughly 1–2× the length of the speech to generate; the page stays usable while they work.
 
 ### 🎚 Sound Studio tab
 Open any MP3/WAV/video (or a file already in the project, or a voice-over you just made) and change:
 - **Tone:** bass, middle, presence, treble, low cut (rumble removal)
-- **Voice:** speed *without changing pitch*, pitch *without changing speed* (±12 semitones), volume
+- **Voice:** speed *without changing pitch*, pitch *without changing speed* (±12 semitones, keeps the voice natural), volume
 - **Level:** compression, loudness target (−14 LUFS for YouTube/Instagram/WhatsApp, −16 voice-over, −18, −23 TV), peak limit
 - **Space:** echo, reverb
 - **Clean & edit:** noise/hum reduction, shorten long pauses, trim start/end, fade in/out, telephone sound, save as mono
@@ -154,9 +159,9 @@ src/
   audio/loudness.ts       BS.1770 integrated loudness → −14 LUFS with peak limiter
   audio/beats.ts          beat detection for cut snapping
   audio/synth.ts          music-bed generator
-  audio/tts.ts            text → speech: Piper voices via onnxruntime-web + espeak-ng phonemizer (WASM)
+  audio/tts.ts            text → speech: Kokoro HD + Piper voices via onnxruntime-web + espeak-ng phonemizer (WASM)
   audio/studio.ts         Sound Studio chain: EQ, compression, echo, reverb, pitch, loudness
-  audio/stretch.worker.ts speed change without pitch change (WSOLA), pause shortening
+  audio/stretch.worker.ts speed change without pitch change (WSOLA), natural pitch shift (TD-PSOLA), pause shortening
   audio/separate*.ts      voice / background separation, MP3 encoding
   audio/captions.ts       Whisper captions (transformers.js), on-screen-text captions, .srt
   cutout.ts               in-browser background removal (MODNet)
