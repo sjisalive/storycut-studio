@@ -12,6 +12,7 @@ import { dims } from './export/exporter';
 import { ExactRuntime } from './export/runtime';
 import { addClips, beatShuffle, deleteRange, keepRange, mainMusic, migrate, newOverlay, setSpeedRange, shufflePool, splitAt, type ShuffleOpts, type ShufflePiece } from './edit';
 import { GridPicker } from './components/GridPanel';
+import { SoundTools } from './components/SoundTools';
 import { download, fmtTime, uid } from './util';
 import { Player, type PlayerHandle } from './components/Player';
 import { MultiTimeline, type Sel } from './components/MultiTimeline';
@@ -56,6 +57,7 @@ export default function App() {
   const [busy, setBusy] = useState('');
   const [speedMenu, setSpeedMenu] = useState(false);
   const [gridOpen, setGridOpen] = useState(false);
+  const [soundTool, setSoundTool] = useState<{ mediaId: string; sceneId?: string } | null>(null);
   const [shuffleOpts, setShuffleOpts] = useState<Omit<ShuffleOpts, 'seed'>>({ rhythm: 2, length: 'same', keepEnds: true });
   const shufflePoolRef = useRef<ShufflePiece[] | null>(null);
   const [shuffleCount, setShuffleCount] = useState(0);
@@ -244,7 +246,7 @@ export default function App() {
             ))}
           </div>
           <div className="tab-body">
-            {tab === 'media' && <MediaBin store={store} addFiles={addFiles} time={time} onShuffle={(ids) => shuffle({ ids })} onCompress={(id) => { const m = p.media.find((x) => x.id === id); if (m) { setQuick(quickProject(p, m)); setDrawer('export'); } }} />}
+            {tab === 'media' && <MediaBin store={store} addFiles={addFiles} time={time} onShuffle={(ids) => shuffle({ ids })} onSeparate={(id) => setSoundTool({ mediaId: id })} onCompress={(id) => { const m = p.media.find((x) => x.id === id); if (m) { setQuick(quickProject(p, m)); setDrawer('export'); } }} />}
             {tab === 'text' && <TextPanel store={store} time={time} setSel={setSel} />}
             {tab === 'audio' && <AudioPanel store={store} time={time} addFiles={addFiles} sel={sel} beatsInfo={beatsInfo} shuffle={{ opts: shuffleOpts, setOpts: setShuffleOpts, run: shuffle, count: shuffleCount }} />}
             {tab === 'style' && <StylePanel store={store} />}
@@ -296,7 +298,7 @@ export default function App() {
           {toast && <div className="toast">{toast}</div>}
         </section>
         <aside className="ws-right card">
-          <Inspector store={store} sel={sel} setSel={setSel} warnings={warnings} addFiles={addFiles} />
+          <Inspector store={store} sel={sel} setSel={setSel} warnings={warnings} addFiles={addFiles} onSeparate={(mediaId, sceneId) => setSoundTool({ mediaId, sceneId })} />
         </aside>
         <section className="ws-bottom"
           onDragOver={(e) => { if (e.dataTransfer.types.includes('text/media')) e.preventDefault(); }}
@@ -332,6 +334,7 @@ export default function App() {
           </aside>
         </>
       )}
+      {soundTool && <SoundTools store={store} mediaId={soundTool.mediaId} sceneId={soundTool.sceneId} time={time} addFiles={addFiles} onClose={() => setSoundTool(null)} />}
       {gridOpen && <GridPicker store={store} time={time} onClose={() => setGridOpen(false)} onDone={(id) => { setGridOpen(false); setSel({ kind: 'scene', id }); say('Split screen added — change frames and design on the right.'); }} />}
       {drawer === 'export' && (
         <>

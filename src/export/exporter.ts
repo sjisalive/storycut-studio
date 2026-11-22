@@ -43,6 +43,18 @@ export async function exportAudioWav(p: Project): Promise<Blob> {
   return encodeWav(await renderMix(p, 48000));
 }
 
+export type AudioContent = 'all' | 'nomusic' | 'music';
+/** Audio only: everything, everything except music, or music only — as MP3 or WAV. */
+export async function exportAudioOnly(p: Project, content: AudioContent, fmt: 'mp3' | 'mp3hq' | 'wav', onProgress?: (v: number) => void) {
+  let q = p;
+  if (content === 'nomusic') q = { ...p, audio: p.audio.filter((a) => a.role !== 'music') };
+  if (content === 'music') q = { ...p, audio: p.audio.filter((a) => a.role === 'music'), scenes: p.scenes.map((s) => ({ ...s, voiceId: undefined, useClipAudio: false, muted: true })) };
+  onProgress?.(0.05);
+  const mix = await renderMix(q, 44100);
+  const { encodeAudio } = await import('../audio/separate');
+  return encodeAudio(mix, fmt, (v) => onProgress?.(0.1 + 0.9 * v));
+}
+
 export interface ExportResult { blob: Blob; ext: string; note?: string }
 export type Progress = (pct: number, label: string) => void;
 

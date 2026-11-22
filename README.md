@@ -86,7 +86,8 @@ Everything is on **one screen**, like a desktop video editor. Nothing is step by
 | **Captions** | Text tab → *From speech* (Whisper in the browser) or *From scene text*. Four caption styles, `.srt` export. |
 | **Voiceover** | Audio → *Record at playhead* |
 | **Frame grab** | 📷 saves the current frame as a PNG |
-| **Save sound** | Media → ⋯ → *Save its sound (WAV)*, or Export → *Sound only* |
+| **🎙 Separate voice** | Select a clip → *🎙 Separate voice* (or Media → ⋯ → *Separate voice / remove voice*). This splits the sound into **Voice only** and **Background (voice removed)**. You can listen to each, save it as MP3 or WAV, or press *Use on timeline* to put it on the Voice track in line with the clip and mute the clip's own sound. Strength: Gentle / Normal / Strong, plus optional noise and hum reduction. It runs on your computer with no AI download: it keeps what is in the centre of a stereo mix, keeps speech frequencies, cleans steady noise and quietens gaps between phrases. In testing, music in the voice dropped by about 10 dB. It is best for speech over moderate music or noise, and is not as clean as studio AI separators on loud songs. Mono recordings only get the noise clean-up. |
+| **Audio only export** | Export → *Audio only*: **everything as you hear it**, **voices and clip sound without music**, or **music only**, as **MP3 (192 or 320 kbps) or WAV**. You can also save only the marked part. Media → ⋯ → *Save its sound (WAV)* saves a single file's sound. |
 | **Remove background** | Media → ⋯ → *Remove background (cut-out)* |
 | **Undo / redo** | `Ctrl+Z` / `Ctrl+Shift+Z`, with unlimited steps for the session |
 

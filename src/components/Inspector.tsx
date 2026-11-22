@@ -13,16 +13,17 @@ import { GridSettings } from './GridPanel';
 const LOOKS: [LookPreset, string][] = [['none', 'Original'], ['vivid', 'Vivid'], ['warm', 'Warm'], ['cool', 'Cool'], ['bw', 'Black & white'], ['vintage', 'Vintage'], ['fade', 'Soft fade']];
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
-export function Inspector({ store, sel, setSel, warnings, addFiles }: {
+export function Inspector({ store, sel, setSel, warnings, addFiles, onSeparate }: {
   store: Store; sel: Sel; setSel: (s: Sel) => void; warnings: Set<string>;
   addFiles: (f: { blob: Blob; name: string; role?: MediaRole }[]) => Promise<string[]>;
+  onSeparate?: (mediaId: string, sceneId?: string) => void;
 }) {
   const { project: p } = store;
   if (sel?.kind === 'scene' && p.scenes.some((s) => s.id === sel.id)) {
     return (
       <div className="col" style={{ gap: 12 }}>
         {p.scenes.find((s) => s.id === sel.id)?.kind === 'grid' && <GridSettings store={store} scene={p.scenes.find((s) => s.id === sel.id)!} />}
-        <ClipSettings store={store} sceneId={sel.id} />
+        <ClipSettings store={store} sceneId={sel.id} onSeparate={onSeparate} />
         <More label="Scene text & layout" open={p.scenes.find((s) => s.id === sel.id)?.kind !== 'moment'}>
           <SceneEditor store={store} sceneId={sel.id} warn={warnings.has(sel.id)} onSelect={(id) => setSel(id ? { kind: 'scene', id } : null)} addFiles={addFiles} />
         </More>
@@ -58,7 +59,7 @@ export function Inspector({ store, sel, setSel, warnings, addFiles }: {
   );
 }
 
-function ClipSettings({ store, sceneId }: { store: Store; sceneId: string }) {
+function ClipSettings({ store, sceneId, onSeparate }: { store: Store; sceneId: string; onSeparate?: (mediaId: string, sceneId?: string) => void }) {
   const { project: p, update } = store;
   const [msg, setMsg] = useState('');
   const [picker, setPicker] = useState(false);
@@ -141,6 +142,7 @@ function ClipSettings({ store, sceneId }: { store: Store; sceneId: string }) {
       </More>
       {!isGrid && <div className="row">
         <button className="btn small" onClick={() => { const q = joinNext(p, s.id); if (q) update(q); else setMsg('Can only join with the next clip when it continues the same video.'); }}>⤝ Join with next</button>
+        {isVideo && m?.hasAudio && <button className="btn small" onClick={() => onSeparate?.(m.id, s.id)}>🎙 Separate voice</button>}
         {isVideo && m?.hasAudio && <button className="btn small" onClick={() => { const q = detachAudio(p, s.id); if (q) { update(q); setMsg('Sound moved to the Voice track — you can now move, trim or fade it on its own.'); } else setMsg('Set speed to 1× first.'); }}>🔊 Detach sound</button>}
       </div>}
       {msg && <Note>{msg}</Note>}

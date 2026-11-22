@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import type { AspectKey, Project } from '../types';
 import { ASPECTS } from '../presets';
 import { timeline } from '../render/engine';
-import { EXPORT_PRESETS, dims, estimateBytes, exportAudioWav, exportGif, exportThumbnail, exportVideo, presetForSize, supportsWebCodecs, type ExportPreset } from '../export/exporter';
+import { EXPORT_PRESETS, dims, estimateBytes, exportAudioOnly, exportAudioWav, exportGif, type AudioContent, exportThumbnail, exportVideo, presetForSize, supportsWebCodecs, type ExportPreset } from '../export/exporter';
 import { captionsFromScenes, toSrt } from '../audio/captions';
 import { keepRange } from '../edit';
 import { download, fmtBytes, fmtTime } from '../util';
@@ -23,6 +23,8 @@ export function StepExport({ project: full, title, quick }: { project: Project; 
   const [label, setLabel] = useState('');
   const [err, setErr] = useState('');
   const [results, setResults] = useState<Result[]>([]);
+  const [aContent, setAContent] = useState<AudioContent>('all');
+  const [aFmt, setAFmt] = useState<'mp3' | 'mp3hq' | 'wav'>('mp3');
   const abort = useRef<AbortController | null>(null);
   const p = onlyRange && hasRange ? keepRange(full, full.rangeIn!, full.rangeOut!) : full;
   const { total } = timeline(p);
@@ -52,6 +54,14 @@ export function StepExport({ project: full, title, quick }: { project: Project; 
     } finally { setBusy(false); }
   };
 
+  const audioOnly = async () => {
+    setBusy(true); setErr(''); setLabel('Mixing sound…');
+    try {
+      const { blob, ext } = await exportAudioOnly(p, aContent, aFmt, (v) => { setPct(v); setLabel(v < 0.1 ? 'Mixing sound…' : 'Encoding…'); });
+      download(blob, `${base}${aContent === 'nomusic' ? '-no-music' : aContent === 'music' ? '-music-only' : ''}-audio.${ext}`);
+      setLabel(`Sound saved (${fmtBytes(blob.size)})`);
+    } catch (e: any) { setErr(e?.message ?? String(e)); } finally { setBusy(false); }
+  };
   const extraFile = async (kind: 'png' | 'srt' | 'gif' | 'wav') => {
     setBusy(true); setErr('');
     try {
@@ -140,8 +150,24 @@ export function StepExport({ project: full, title, quick }: { project: Project; 
             <button className="btn small" disabled={busy || !p.scenes.length} onClick={() => extraFile('png')}>🖼 Thumbnail (PNG)</button>
             <button className="btn small" disabled={busy || !p.scenes.length} onClick={() => extraFile('srt')}>💬 Captions (.srt)</button>
             <button className="btn small" disabled={busy || !p.scenes.length} onClick={() => extraFile('gif')}>🎞 GIF (6 s)</button>
-            <button className="btn small" disabled={busy || !p.scenes.length} onClick={() => extraFile('wav')}>🎵 Sound only (WAV)</button>
           </div>
+        </div>
+      )}
+      {!quick && (
+        <div className="card" style={{ marginTop: 14 }}>
+          <h3>🎵 Audio only</h3>
+          <div className="row">
+            <select value={aContent} onChange={(e) => setAContent(e.target.value as AudioContent)} style={{ width: 'auto' }}>
+              <option value="all">Everything, as you hear it</option>
+              <option value="nomusic">Voices & clip sound (no music)</option>
+              <option value="music">Music only</option>
+            </select>
+            <select value={aFmt} onChange={(e) => setAFmt(e.target.value as any)} style={{ width: 'auto' }}>
+              <option value="mp3">MP3 · 192 kbps</option><option value="mp3hq">MP3 · 320 kbps</option><option value="wav">WAV · uncompressed</option>
+            </select>
+            <button className="btn primary small" disabled={busy || !p.scenes.length} onClick={audioOnly}>⬇ Save audio</button>
+          </div>
+          <p className="small muted">Uses the same mix and levels (about −14 LUFS) as the video{onlyRange && hasRange ? ', only the selected part' : ''}. To pull a voice out of one clip, use 🎙 Separate voice on that clip.</p>
         </div>
       )}
     </>

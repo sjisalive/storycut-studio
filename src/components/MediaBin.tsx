@@ -9,11 +9,12 @@ import { timeline } from '../render/engine';
 import { download, fmtTime, uid } from '../util';
 import { Note, Thumb, statusTag } from './common';
 
-export function MediaBin({ store, addFiles, time, onCompress, onShuffle }: {
+export function MediaBin({ store, addFiles, time, onCompress, onShuffle, onSeparate }: {
   store: Store; time: number;
   addFiles: (f: (File | { blob: Blob; name: string; role?: MediaRole })[]) => Promise<string[]>;
   onCompress: (mediaId: string) => void;
   onShuffle?: (ids: string[]) => void;
+  onSeparate?: (mediaId: string) => void;
 }) {
   const { project: p, update } = store;
   const input = useRef<HTMLInputElement>(null);
@@ -76,6 +77,7 @@ export function MediaBin({ store, addFiles, time, onCompress, onShuffle }: {
             {m.kind === 'image' && <button onClick={() => { update((c) => ({ ...c, overlays: [...c.overlays, imageOverlay(m.id, time, Math.max(2, total - time))] })); setMenu(null); }}>Put on top as logo / picture</button>}
             {m.kind === 'audio' && <button onClick={() => { update(setMusic(p, m.id)); setMenu(null); }}>Use as background music</button>}
             {m.kind === 'video' && <button onClick={() => { onCompress(m.id); setMenu(null); }}>Compress this video…</button>}
+            {m.kind !== 'image' && (m.kind === 'audio' || m.hasAudio) && <button onClick={() => { onSeparate?.(m.id); setMenu(null); }}>🎙 Separate voice / remove voice…</button>}
             {m.kind !== 'image' && <button onClick={() => { extractAudio(m); setMenu(null); }}>Save its sound (WAV)</button>}
             {m.kind !== 'audio' && <button onClick={() => { cutout(m); setMenu(null); }}>Remove background (cut-out)</button>}
             {m.kind === 'audio' && <>
