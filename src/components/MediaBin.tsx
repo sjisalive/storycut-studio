@@ -77,7 +77,7 @@ export function MediaBin({ store, addFiles, time, onCompress, onShuffle, onSepar
             {m.kind === 'image' && <button onClick={() => { update((c) => ({ ...c, overlays: [...c.overlays, imageOverlay(m.id, time, Math.max(2, total - time))] })); setMenu(null); }}>Put on top as logo / picture</button>}
             {m.kind === 'audio' && <button onClick={() => { update(setMusic(p, m.id)); setMenu(null); }}>Use as background music</button>}
             {m.kind === 'video' && <button onClick={() => { onCompress(m.id); setMenu(null); }}>Compress this video…</button>}
-            {m.kind !== 'image' && (m.kind === 'audio' || m.hasAudio) && <button onClick={() => { onSeparate?.(m.id); setMenu(null); }}>🎙 Separate voice / remove voice…</button>}
+            {m.kind !== 'image' && (m.kind === 'audio' || m.hasAudio) && <button onClick={() => { onSeparate?.(m.id); setMenu(null); }}>🎵 Extract audio / separate voice…</button>}
             {m.kind !== 'image' && <button onClick={() => { extractAudio(m); setMenu(null); }}>Save its sound (WAV)</button>}
             {m.kind !== 'audio' && <button onClick={() => { cutout(m); setMenu(null); }}>Remove background (cut-out)</button>}
             {m.kind === 'audio' && <>

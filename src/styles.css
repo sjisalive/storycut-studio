@@ -286,3 +286,30 @@ canvas.wave { position: absolute; left: 0; top: 50%; transform: translateY(-50%)
 .clip-wave { position: absolute; left: 2px; right: 2px; bottom: 1px; height: 14px; background: rgba(0,0,0,.35); border-radius: 4px; overflow: hidden; pointer-events: none; }
 .clip-wave canvas.wave { top: 0; transform: none; }
 .mt-row.audio-row { height: 46px; }
+
+/* ---- Voice-over, Sound Studio, Extract audio pages ---- */
+.modes { display: flex; gap: 2px; background: var(--tint); border-radius: 10px; padding: 3px; margin-left: 8px; }
+.modes button { border: 0; background: none; padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.modes button.on { background: #fff; color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.mode-page[hidden] { display: none; }
+.mode-page { flex: 1; min-height: 0; overflow: auto; }
+.tool-page { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 12px; padding: 12px; max-width: 1240px; margin: 0 auto; width: 100%; align-items: start; }
+.tool-main, .tool-side { margin: 0; }
+.tool-side { position: sticky; top: 12px; max-height: calc(100vh - 90px); overflow: auto; }
+.tool-title { margin: 0 0 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 5px 11px; cursor: pointer; font-size: 13px; }
+.chip.on { background: var(--tint); border-color: var(--check); color: var(--accent-dark); font-weight: 600; }
+.vo-text { width: 100%; margin-top: 10px; font-size: 17px; line-height: 1.6; padding: 12px; border: 1px solid var(--line); border-radius: 10px; resize: vertical; font-family: inherit; }
+.voice-card { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; cursor: pointer; background: #fff; }
+.voice-card.on { border-color: var(--check); background: var(--tint); }
+.bufwave { position: relative; background: #f6f8f6; border-radius: 8px; margin-top: 6px; cursor: pointer; overflow: hidden; }
+.bufwave canvas { width: 100%; display: block; }
+.bufwave-head { position: absolute; top: 0; bottom: 0; width: 2px; background: #e0533d; pointer-events: none; }
+.drop-big { border: 2px dashed var(--line); border-radius: 12px; padding: 28px 16px; text-align: center; color: var(--muted); cursor: pointer; margin-top: 10px; }
+.drop-big:hover { border-color: var(--check); background: var(--tint); }
+.studio-group { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; margin: 14px 0 4px; border-top: 1px solid var(--line); padding-top: 10px; }
+.studio-slider { margin-bottom: 4px; }
+.studio-slider b { color: var(--text); font-weight: 600; }
+.bad-text { color: #c0392b; }
+@media (max-width: 900px) { .tool-page { grid-template-columns: 1fr; } .tool-side { position: static; max-height: none; } .modes button { padding: 6px 6px; font-size: 12px; } }

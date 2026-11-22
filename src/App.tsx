@@ -13,6 +13,10 @@ import { ExactRuntime } from './export/runtime';
 import { addClips, beatShuffle, deleteRange, keepRange, mainMusic, migrate, newOverlay, setSpeedRange, shufflePool, splitAt, type ShuffleOpts, type ShufflePiece } from './edit';
 import { GridPicker } from './components/GridPanel';
 import { SoundTools } from './components/SoundTools';
+import { VoiceTab } from './components/VoiceTab';
+import { StudioTab, type StudioInput } from './components/StudioTab';
+import { ExtractTab } from './components/ExtractTab';
+import { encodeWav } from './audio/synth';
 import { download, fmtTime, uid } from './util';
 import { Player, type PlayerHandle } from './components/Player';
 import { MultiTimeline, type Sel } from './components/MultiTimeline';
@@ -28,6 +32,7 @@ import { ProjectsDrawer } from './components/ProjectsDrawer';
 
 type NewFile = File | { blob: Blob; name: string; role?: MediaRole };
 type Tab = 'media' | 'text' | 'audio' | 'style';
+type Mode = 'edit' | 'voice' | 'studio' | 'extract';
 
 /** A one-clip project used by "Compress this video". */
 function quickProject(p: Project, m: MediaItem): Project {
@@ -58,6 +63,11 @@ export default function App() {
   const [speedMenu, setSpeedMenu] = useState(false);
   const [gridOpen, setGridOpen] = useState(false);
   const [soundTool, setSoundTool] = useState<{ mediaId: string; sceneId?: string } | null>(null);
+  const [mode, setModeRaw] = useState<Mode>('edit');
+  const [visited, setVisited] = useState<Set<Mode>>(new Set());
+  const setMode = useCallback((m: Mode) => { setModeRaw(m); setVisited((v) => (v.has(m) ? v : new Set(v).add(m))); }, []);
+  const [studioIn, setStudioIn] = useState<StudioInput | null>(null);
+  const [extractPick, setExtractPick] = useState<{ id: string } | null>(null);
   const [shuffleOpts, setShuffleOpts] = useState<Omit<ShuffleOpts, 'seed'>>({ rhythm: 2, length: 'same', keepEnds: true });
   const shufflePoolRef = useRef<ShufflePiece[] | null>(null);
   const [shuffleCount, setShuffleCount] = useState(0);
@@ -65,7 +75,7 @@ export default function App() {
   const dirty = useRef(false);
   const { total } = timeline(p);
   // Test hook (only with ?test in the address) so automated checks can read the project.
-  if (typeof location !== 'undefined' && location.search.includes('test')) (window as any).__sc = { store, time, sel };
+  if (typeof location !== 'undefined' && location.search.includes('test')) { (window as any).__sc = { store, time, sel }; (window as any).__loadTts ??= () => import('./audio/tts'); }
 
   const say = useCallback((m: string) => { setToast(m); window.clearTimeout((say as any).t); (say as any).t = window.setTimeout(() => setToast(''), 3500); }, []);
   const onTime = useCallback((t: number) => setTime(t), []);
@@ -93,6 +103,14 @@ export default function App() {
     }));
     return items.map((i) => i.id);
   }, [update, silentAll]);
+
+  /** Put a finished sound (voice-over, edited sound…) on the Voice track at the playhead. */
+  const addSoundToVideo = useCallback(async (buf: AudioBuffer, name: string) => {
+    const [id] = await addFiles([{ blob: encodeWav(buf), name: `${name}.wav`, role: 'voice' }]);
+    const at = time;
+    update((c) => ({ ...c, audio: [...c.audio, { id: uid('a'), mediaId: id, role: 'voice', at, offset: 0, dur: buf.duration, volume: 1, fadeIn: 0.05, fadeOut: 0.2 }] }));
+  }, [addFiles, update, time]);
+  const toStudio = useCallback((buf: AudioBuffer, name: string) => { setStudioIn({ buf, name }); setMode('studio'); }, []);
 
   // Beats from the main music (shifted to where it sits on the timeline, looped)
   const music = mainMusic(p);
@@ -184,7 +202,7 @@ export default function App() {
       const el = e.target as HTMLInputElement;
       const tag = el?.tagName;
       const typing = (tag === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes(el.type)) || tag === 'TEXTAREA' || tag === 'SELECT';
-      if (typing || drawer || gridOpen || document.querySelector('.modal-bg')) return;
+      if (typing || drawer || gridOpen || mode !== 'edit' || document.querySelector('.modal-bg')) return;
       if (tag === 'INPUT' && (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End')) el.blur();
       const k = e.key.toLowerCase();
       const mod = e.ctrlKey || e.metaKey;
@@ -231,14 +249,22 @@ export default function App() {
         <input className="name" value={p.name} onChange={(e) => update({ name: e.target.value }, 'name')} aria-label="Project name" />
         <button className="icon-btn" title="Undo (Ctrl+Z)" disabled={!canUndo} onClick={undo}>↶</button>
         <button className="icon-btn" title="Redo (Ctrl+Shift+Z)" disabled={!canRedo} onClick={redo}>↷</button>
+        <nav className="modes" aria-label="Tools">
+          {([['edit', '🎬 Video editor'], ['voice', '🗣 Voice-over'], ['studio', '🎚 Sound Studio'], ['extract', '🎵 Extract audio']] as [Mode, string][]).map(([k, l]) => (
+            <button key={k} className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>{l}</button>
+          ))}
+        </nav>
         <span className="spacer" />
         {savedAt && <span className="saved hide-sm">Saved {new Date(savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
-        <button className="btn small" onClick={() => setDrawer('auto')}>✨ Auto video</button>
+        {mode === 'edit' && <button className="btn small" onClick={() => setDrawer('auto')}>✨ Auto video</button>}
         <button className="btn small" onClick={() => setDrawer('projects')}>📁 Projects</button>
-        <button className="btn small primary" onClick={() => { setQuick(null); setDrawer('export'); }}>⬇ Export</button>
+        {mode === 'edit' && <button className="btn small primary" onClick={() => { setQuick(null); setDrawer('export'); }}>⬇ Export</button>}
       </header>
       {busy && <div className="note" style={{ margin: 8 }}>{busy}</div>}
-      <div className="ws">
+      {visited.has('voice') && <div className="mode-page" hidden={mode !== 'voice'}><VoiceTab onStudio={toStudio} onTimeline={addSoundToVideo} /></div>}
+      {visited.has('studio') && <div className="mode-page" hidden={mode !== 'studio'}><StudioTab input={studioIn} media={p.media} onTimeline={addSoundToVideo} /></div>}
+      {visited.has('extract') && <div className="mode-page" hidden={mode !== 'extract'}><ExtractTab media={p.media} preselect={extractPick} onStudio={toStudio} onTimeline={addSoundToVideo} /></div>}
+      <div className="ws" style={mode === 'edit' ? undefined : { display: 'none' }}>
         <aside className="ws-left card">
           <div className="tabs">
             {([['media', '🎞 Media'], ['text', '🔤 Text'], ['audio', '🎵 Audio'], ['style', '🎨 Style']] as [Tab, string][]).map(([k, l]) => (
@@ -246,7 +272,7 @@ export default function App() {
             ))}
           </div>
           <div className="tab-body">
-            {tab === 'media' && <MediaBin store={store} addFiles={addFiles} time={time} onShuffle={(ids) => shuffle({ ids })} onSeparate={(id) => setSoundTool({ mediaId: id })} onCompress={(id) => { const m = p.media.find((x) => x.id === id); if (m) { setQuick(quickProject(p, m)); setDrawer('export'); } }} />}
+            {tab === 'media' && <MediaBin store={store} addFiles={addFiles} time={time} onShuffle={(ids) => shuffle({ ids })} onSeparate={(id) => { setExtractPick({ id }); setMode('extract'); }} onCompress={(id) => { const m = p.media.find((x) => x.id === id); if (m) { setQuick(quickProject(p, m)); setDrawer('export'); } }} />}
             {tab === 'text' && <TextPanel store={store} time={time} setSel={setSel} />}
             {tab === 'audio' && <AudioPanel store={store} time={time} addFiles={addFiles} sel={sel} beatsInfo={beatsInfo} shuffle={{ opts: shuffleOpts, setOpts: setShuffleOpts, run: shuffle, count: shuffleCount }} />}
             {tab === 'style' && <StylePanel store={store} />}

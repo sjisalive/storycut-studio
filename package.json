@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "tts-assets": "node scripts/copy-tts-assets.mjs",
+    "predev": "node scripts/copy-tts-assets.mjs",
+    "prebuild": "node scripts/copy-tts-assets.mjs"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",
@@ -19,6 +22,7 @@
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
+    "@diffusionstudio/piper-wasm": "^1.0.0",
     "@fontsource/hind": "^5.3.0",
     "@fontsource/inter": "^5.3.0",
     "@fontsource/montserrat": "^5.3.0",
@@ -36,6 +40,7 @@
     "idb-keyval": "^6.3.0",
     "mp4-muxer": "^5.2.2",
     "mp4box": "^2.6.0",
+    "onnxruntime-web": "^1.20.1",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

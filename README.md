@@ -101,6 +101,24 @@ Opens one page with the video type, ready examples, shape/length/language/style/
 ### Export
 1080p / 720p / Small file presets, or **compress to a target size**. Options: *only the marked part*, and extra versions in other shapes (16:9, 9:16, 1:1, 4:5) with text repositioned. Extras: thumbnail PNG, `.srt`, 6-second GIF, sound-only WAV.
 
+### 🗣 Voice-over tab (text → speech)
+Type or paste a script in Hindi, English, Malayalam or Nepali and press **Make voice-over**. Voices: Hindi **Pratham** (male) and **Priyamvada** (female), plus several English voices (US/UK, male/female). Sliders for **speed**, **expression** (flat → lively) and **pause between sentences**. A full stop or `।` gives a short pause and a new line a longer one; numbers read best written as words.
+Then **Save** (MP3 192/320 kbps or WAV), **＋ Add to video** (goes on the Voice track at the playhead and the music dips under it), or **Edit sound** to open it in Sound Studio.
+The voices are open-source Piper models that run on your computer — nothing is uploaded and no account is needed. Each voice downloads once (≈60 MB from Hugging Face) and then works offline.
+
+### 🎚 Sound Studio tab
+Open any MP3/WAV/video (or a file already in the project, or a voice-over you just made) and change:
+- **Tone:** bass, middle, presence, treble, low cut (rumble removal)
+- **Voice:** speed *without changing pitch*, pitch *without changing speed* (±12 semitones), volume
+- **Level:** compression, loudness target (−14 LUFS for YouTube/Instagram/WhatsApp, −16 voice-over, −18, −23 TV), peak limit
+- **Space:** echo, reverb
+- **Clean & edit:** noise/hum reduction, shorten long pauses, trim start/end, fade in/out, telephone sound, save as mono
+
+Quick looks: Clear voice-over, Deep voice, Radio announcer, Warm podcast, Bright & crisp, Telephone, Big hall, Echo, Faster, Slower & calm, Chipmunk, Giant. Before/after waveforms with click-to-listen, and loudness/peak shown for both.
+
+### 🎵 Extract audio tab
+Drop one or many videos and get **MP3 (192/320 kbps) or WAV** for each in one go. Choose **Full sound**, **Voice only** (music and noise removed) or **Background only** (voice removed). Each result can be played, saved again, sent to Sound Studio or added to the video.
+
 ### Saving projects
 - Projects **autosave in this browser** (IndexedDB) and are listed under 📁 Projects.
 - **Save project file** writes one `.storycut` file with your media included. Open it on any other computer with **Open project file**.
@@ -136,6 +154,10 @@ src/
   audio/loudness.ts       BS.1770 integrated loudness → −14 LUFS with peak limiter
   audio/beats.ts          beat detection for cut snapping
   audio/synth.ts          music-bed generator
+  audio/tts.ts            text → speech: Piper voices via onnxruntime-web + espeak-ng phonemizer (WASM)
+  audio/studio.ts         Sound Studio chain: EQ, compression, echo, reverb, pitch, loudness
+  audio/stretch.worker.ts speed change without pitch change (WSOLA), pause shortening
+  audio/separate*.ts      voice / background separation, MP3 encoding
   audio/captions.ts       Whisper captions (transformers.js), on-screen-text captions, .srt
   cutout.ts               in-browser background removal (MODNet)
   export/exporter.ts      WebCodecs H.264 + AAC → MP4 (mp4-muxer), fallback, PNG, GIF
@@ -148,6 +170,7 @@ src/
 - **Text** is drawn with Canvas 2D, which uses the browser's text shaper, so Devanagari, Bengali, Tamil, Telugu and Gujarati conjuncts are correct. ffmpeg drawtext is not used. Fonts are bundled (Inter, Poppins, Montserrat, Noto Sans + Devanagari/Bengali/Tamil/Telugu/Gujarati, Mukta, Hind, Playfair Display). Text auto-shrinks to the safe zone, and the timeline flags scenes with ⚠ when text had to shrink a lot.
 - **Export** renders frame by frame and encodes with WebCodecs. MP4/MOV clips are read with mp4box.js and decoded forward with the WebCodecs `VideoDecoder`, which is frame-exact and about 10–15× faster than seeking. Other formats (WebM, rotated phone clips) fall back to precise seeking. Audio is AAC where the browser has an AAC encoder (Chrome/Edge on Windows and macOS). Elsewhere it falls back to Opus in MP4, and the app shows a note.
 - **Fallback encoder:** if WebCodecs is missing, the app records in real time with `MediaRecorder`. That gives MP4 in Safari and recent Chrome, and WebM elsewhere. ffmpeg.wasm was left out on purpose. Its multithreaded build needs special server headers (COOP/COEP) that GitHub Pages can't send, and its 30 MB download would slow down every visit.
+- **Text to speech** uses Piper VITS voices (MIT) run with onnxruntime-web in single-thread WASM mode, so it works on GitHub Pages without special headers. The engine files (~30 MB) are copied into `public/tts` by `npm run build` (`scripts/copy-tts-assets.mjs`) and only load when the Voice-over tab is used. Voices are cached with the Cache Storage API.
 - **Auto captions and person cut-out** load transformers.js and the model from a CDN the first time you use them, so that one time needs internet. Your audio and photos are processed locally and never uploaded. Everything else works fully offline once the page is loaded.
 
 ## 6. Troubleshooting
