@@ -106,6 +106,8 @@ Type or paste a script in Hindi, English, Malayalam or Nepali and press **Make v
 - **✨ Natural HD voices** (Kokoro): the most human-sounding — natural rhythm and intonation. Hindi **Omega** (male, deep), **Psi** (male), **Alpha** and **Beta** (female); English **Onyx** (deep US male), **Michael**, **George** (deep UK male), **Fable**, **Heart**, **Bella**, **Emma**. One shared download of ≈90 MB.
 - **Light voices** (Piper): Hindi Pratham / Priyamvada and more; smaller and faster, but more robotic.
 - **Voice tone:** Natural, **Deep** or **Extra deep** — lowers the pitch while keeping the voice's own character (formant-preserving PSOLA), with added warmth.
+- **Clean script:** time codes (00:05–00:39), [directions], headings and English notes inside a Hindi script are left out automatically — the tab lists what will not be read.
+- **HD quality:** Best (full model, clearest, ≈310 MB once) or Fast (≈90 MB, slightly hissy).
 - **Studio finish:** warm EQ, even level and −16 LUFS loudness, on by default.
 - Sliders for **speed** and **pause between sentences** (and **expression** for light voices). A full stop or `।` gives a short pause and a new line a longer one; numbers read best written as words.
 Then **Save** (MP3 192/320 kbps or WAV), **＋ Add to video** (goes on the Voice track at the playhead and the music dips under it), or **Edit sound** to open it in Sound Studio.

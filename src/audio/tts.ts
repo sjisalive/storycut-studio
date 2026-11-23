@@ -121,16 +121,23 @@ async function fetchCached(url: string, onProgress?: (p: number) => void): Promi
 export async function isVoiceDownloaded(id: string) {
   if (!('caches' in window)) return false;
   const cache = await caches.open('storycut-voices-v1');
-  if (id.startsWith('kokoro:')) return !!(await cache.match(`${KOKORO_BASE()}onnx/model_quantized.onnx`));
+  if (id.startsWith('kokoro:')) return !!(await cache.match(kokoroModelUrl()));
   return !!(await cache.match(`${VOICE_BASE()}${voicePath(id)}.onnx`));
 }
 
+/** 'best' = full-precision model (clearest sound, ≈310 MB once); 'fast' = compressed model (≈90 MB, slightly hissy). */
+export type HdQuality = 'best' | 'fast';
+export function getHdQuality(): HdQuality { try { return (localStorage.getItem('sc-hd-quality') as HdQuality) || 'best'; } catch { return 'best'; } }
+export function setHdQuality(q: HdQuality) { try { localStorage.setItem('sc-hd-quality', q); } catch { /* */ } kokoroP = null; kokoroQ = null; }
+const kokoroModelUrl = (q = getHdQuality()) => `${KOKORO_BASE()}onnx/${q === 'best' ? 'model.onnx' : 'model_quantized.onnx'}`;
+let kokoroQ: HdQuality | null = null;
 let kokoroP: Promise<any> | null = null;
 const kokoroVoices = new Map<string, Promise<Float32Array>>();
 function loadKokoro(onProgress?: (p: number) => void) {
-  if (!kokoroP) {
+  if (!kokoroP || kokoroQ !== getHdQuality()) {
+    kokoroQ = getHdQuality();
     kokoroP = (async () => {
-      const [ort, model] = await Promise.all([getOrt(), fetchCached(`${KOKORO_BASE()}onnx/model_quantized.onnx`, onProgress)]);
+      const [ort, model] = await Promise.all([getOrt(), fetchCached(kokoroModelUrl(), onProgress)]);
       const session = await ort.InferenceSession.create(model, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
       await getPhonemizer();
       return session;
@@ -160,7 +167,7 @@ async function kokoroPhonemes(text: string, lang: string): Promise<string> {
 
 async function speakKokoro(text: string, voiceId: string, o: TtsOptions, onProgress: (stage: string, p: number) => void): Promise<AudioBuffer> {
   const name = voiceId.slice(7);
-  const session = await loadKokoro((p) => onProgress('Downloading the natural voice engine (once, ~90 MB)…', p));
+  const session = await loadKokoro((p) => onProgress(`Downloading the natural voice engine (once, ~${getHdQuality() === 'best' ? 310 : 90} MB)…`, p));
   const style = await kokoroVoice(name);
   const ort = await getOrt();
   const sr = 24000;
@@ -226,6 +233,33 @@ export function loadVoice(id: string, onProgress?: (p: number) => void): Promise
 }
 
 /** Split into sentences (keeps Hindi danda ।). Paragraph breaks become longer pauses. */
+/**
+ * Make a pasted script speakable: drop time codes (00:05–00:39), [stage directions], markdown marks,
+ * and — for Hindi/Malayalam/Nepali voices — lines that are notes in English. Returns what was left out.
+ */
+export function cleanScript(text: string, lang: string): { text: string; skipped: string[] } {
+  const skipped: string[] = [];
+  const TC = /\(?\b\d{1,2}:\d{2}(?::\d{2})?(?:\s*(?:[-–—~]|to|से)\s*\d{1,2}:\d{2}(?::\d{2})?)?\s*(?:सेकंड|sec|s)?\)?/gi;
+  const lines = text.replace(/\r/g, '').split('\n').map((line) => {
+    let l = line;
+    // a whole line in bold or a markdown heading is a section title, not narration
+    if (/^\s*(\*\*[^*]+\*\*|#{1,6}\s.*)\s*:?\s*$/.test(l)) { skipped.push(`heading: ${l.replace(/[*#]/g, '').trim()}`); return ''; }
+    const tcs = l.match(TC);
+    if (tcs) { skipped.push(...tcs.map((t) => `time code ${t.trim()}`)); l = l.replace(TC, ' '); }
+    l = l.replace(/\[[^\]]*\]/g, (m) => { skipped.push(m); return ' '; });
+    l = l.replace(/^\s*(?:#{1,6}|[-*•●▪➤►]|\d+[.)])\s+/, '').replace(/[*_#`|>]+/g, ' ');
+    l = l.replace(/^\s*(?:VO|V\.O\.|Voice ?over|Narrator|Scene \d+|Shot \d+|Visual|Visuals|B-?roll|Music|SFX|Text on screen|Super)\s*[:–-]\s*/i, '');
+    if (lang !== 'en') {
+      const latin = (l.match(/[A-Za-z]/g) ?? []).length, other = (l.match(/[\u0900-\u0DFF]/g) ?? []).length;
+      if (latin > 12 && latin > other * 1.5) { skipped.push(l.trim()); return ''; }
+      // notes in English in brackets inside a Hindi line
+      l = l.replace(/\(([^)]*)\)/g, (m, inner) => ((inner.match(/[A-Za-z]/g) ?? []).length > 8 ? (skipped.push(m), ' ') : m));
+    }
+    return l.replace(/\s{2,}/g, ' ').trim();
+  });
+  return { text: lines.join('\n').replace(/\n{3,}/g, '\n\n').trim(), skipped: skipped.filter((x) => /[\p{L}\p{N}]/u.test(x)) };
+}
+
 export function sentences(text: string): { text: string; pauseAfter: number }[] {
   const out: { text: string; pauseAfter: number }[] = [];
   const paras = text.replace(/\r/g, '').split(/\n\s*\n|\n/);
@@ -235,7 +269,7 @@ export function sentences(text: string): { text: string; pauseAfter: number }[] 
     clean.forEach((s, i) => {
       // very long sentences are split at commas so the model keeps a natural rhythm
       const pieces = s.length > 260 ? s.split(/(?<=[,;:])\s+/) : [s];
-      pieces.forEach((piece, k) => out.push({ text: piece, pauseAfter: k < pieces.length - 1 ? 0.25 : i < clean.length - 1 ? 1 : pi < paras.length - 1 ? 2 : 0 }));
+      pieces.forEach((piece, k) => out.push({ text: piece, pauseAfter: k < pieces.length - 1 ? 0.25 : i < clean.length - 1 ? 1 : pi < paras.length - 1 ? 1.4 : 0 }));
     });
   });
   return out;
@@ -245,6 +279,8 @@ export interface TtsOptions { speed: number; variation: number; pause: number } 
 
 /** Speak the text with a voice. Returns mono audio at the voice's sample rate. */
 export async function speak(text: string, voiceId: string, o: TtsOptions, onProgress: (stage: string, p: number) => void): Promise<AudioBuffer> {
+  const v = VOICES.find((x) => x.id === voiceId);
+  text = cleanScript(text, v?.lang ?? 'en').text;
   if (voiceId.startsWith('kokoro:')) return speakKokoro(text, voiceId, o, onProgress);
   const { session, config } = await loadVoice(voiceId, (p) => onProgress('Downloading voice (once)…', p));
   const ort = await getOrt();

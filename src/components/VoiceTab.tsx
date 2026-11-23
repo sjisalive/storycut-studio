@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { isVoiceDownloaded, sentences, speak, VOICES } from '../audio/tts';
+import { cleanScript, getHdQuality, isVoiceDownloaded, sentences, setHdQuality, speak, VOICES, type HdQuality } from '../audio/tts';
 import { Note, Progress } from './common';
 import { DEFAULT_STUDIO, matchVoice, processSound, voiceProfile } from '../audio/studio';
 import { loadSampleProfile } from './StudioTab';
@@ -20,9 +20,10 @@ export function VoiceTab({ onStudio, onTimeline }: {
 }) {
   const [lang, setLang] = useState('hi');
   const [voice, setVoice] = useState('kokoro:hm_omega');
-  const [tone, setTone] = useState<'natural' | 'deep' | 'deeper' | 'sample'>(() => (loadSampleProfile() ? 'sample' : 'deep'));
+  const [tone, setTone] = useState<'natural' | 'deep' | 'deeper' | 'sample'>('natural');
   const sample = loadSampleProfile();
   const [polish, setPolish] = useState(true);
+  const [quality, setQuality] = useState<HdQuality>(getHdQuality());
   const [text, setText] = useState('');
   const [speed, setSpeed] = useState(1);
   const [variation, setVariation] = useState(0.5);
@@ -38,11 +39,12 @@ export function VoiceTab({ onStudio, onTimeline }: {
 
   useEffect(() => {
     Promise.all(VOICES.map(async (v) => [v.id, await isVoiceDownloaded(v.id).catch(() => false)] as const)).then((r) => setHave(Object.fromEntries(r)));
-  }, [busy]);
+  }, [busy, quality]);
 
   const voices = VOICES.filter((v) => v.lang === lang);
-  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-  const estimate = words / (2.4 * speed) + sentences(text).length * 0.5 * pause;
+  const cleaned = cleanScript(text, lang);
+  const words = cleaned.text ? cleaned.text.split(/\s+/).length : 0;
+  const estimate = words / (2.4 * speed) + sentences(cleaned.text).length * 0.5 * pause;
   const name = `voiceover-${VOICES.find((v) => v.id === voice)?.label.split(' ')[0].toLowerCase() ?? 'voice'}${tone !== 'natural' ? `-${tone === 'sample' ? 'matched' : tone}` : ''}`;
 
   const make = async () => {
@@ -83,6 +85,12 @@ export function VoiceTab({ onStudio, onTimeline }: {
           <span>{words} words · about {secs(estimate)}</span>
           {!text && <button className="btn small" onClick={() => setText(SAMPLE[lang])}>Try an example</button>}
         </div>
+        {cleaned.skipped.length > 0 && (
+          <details className="note" style={{ marginTop: 6 }}>
+            <summary className="small"><b>{cleaned.skipped.length} part{cleaned.skipped.length > 1 ? 's' : ''} will not be read aloud</b> — time codes, [directions] and English notes. Click to see.</summary>
+            <ul className="small" style={{ margin: '6px 0 0', paddingLeft: 18, maxHeight: 160, overflow: 'auto' }}>{cleaned.skipped.map((x, i) => <li key={i}>{x}</li>)}</ul>
+          </details>
+        )}
         <div className="small muted" style={{ marginTop: 4 }}>Tip: each full stop or । gives a short pause, a new line a longer one. Write numbers in words for the most natural reading.</div>
 
         <div className="row" style={{ marginTop: 12, gap: 8 }}>
@@ -121,13 +129,21 @@ export function VoiceTab({ onStudio, onTimeline }: {
                 <b>{v.gender === 'male' ? '👨' : '👩'} {v.label}</b>
                 <span className="small muted"> {v.gender}{v.note ? ` · ${v.note}` : ''}</span>
               </span>
-              <span className="small muted">{have[v.id] ? '✓ ready' : v.hd ? '≈90 MB once' : '≈60 MB once'}</span>
+              <span className="small muted">{have[v.id] ? '✓ ready' : v.hd ? (quality === 'best' ? '≈310 MB once' : '≈90 MB once') : '≈60 MB once'}</span>
             </label>
           </div>))}
         </div>
         <label className="field small" style={{ marginTop: 14 }}>Speed <b>{speed.toFixed(2)}×</b>
           <input type="range" min={0.6} max={1.6} step={0.05} value={speed} onChange={(e) => setSpeed(+e.target.value)} />
         </label>
+        {VOICES.find((v) => v.id === voice)?.hd && (
+          <label className="field small">HD quality
+            <select value={quality} onChange={(e) => { const q = e.target.value as HdQuality; setHdQuality(q); setQuality(q); }}>
+              <option value="best">Best — clearest sound (≈310 MB, once)</option>
+              <option value="fast">Fast — smaller download (≈90 MB), slightly hissy</option>
+            </select>
+          </label>
+        )}
         <div className="small" style={{ marginBottom: 4 }}>Voice tone</div>
         <div className="chips" style={{ marginBottom: 10 }}>
           {([['natural', 'Natural'], ['deep', '🎙 Deep'], ['deeper', '🎙 Extra deep']] as const).map(([k, l]) => (
