@@ -103,6 +103,7 @@ Opens one page with the video type, ready examples, shape/length/language/style/
 
 ### 🗣 Voice-over tab (text → speech)
 Type or paste a script in Hindi, English, Malayalam or Nepali and press **Make voice-over**.
+- **🎙 Studio voices** (Sarvam AI Bulbul v3, online): the most human Hindi and Indian-English voices, trained on Indian speech — e.g. Shubh, Aditya, Rahul, Kabir, Anand (male), Ritu, Priya, Neha, Shreya (female). Needs your own Sarvam API key (free starting credits, then about ₹3 per 1,000 characters); the key is kept only in your browser and the script text is sent to Sarvam to be spoken.
 - **✨ Natural HD voices** (Kokoro): the most human-sounding — natural rhythm and intonation. Hindi **Omega** (male, deep), **Psi** (male), **Alpha** and **Beta** (female); English **Onyx** (deep US male), **Michael**, **George** (deep UK male), **Fable**, **Heart**, **Bella**, **Emma**. One shared download of ≈90 MB.
 - **Light voices** (Piper): Hindi Pratham / Priyamvada and more; smaller and faster, but more robotic.
 - **Voice tone:** Natural, **Deep** or **Extra deep** — lowers the pitch while keeping the voice's own character (formant-preserving PSOLA), with added warmth.

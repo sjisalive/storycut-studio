@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { cleanScript, getHdQuality, isVoiceDownloaded, sentences, setHdQuality, speak, VOICES, type HdQuality } from '../audio/tts';
+import { cleanScript, getHdQuality, getSarvamKey, isVoiceDownloaded, sentences, setHdQuality, setSarvamKey, speak, VOICES, type HdQuality } from '../audio/tts';
 import { Note, Progress } from './common';
 import { CLEAR_FINISH, DEFAULT_STUDIO, matchVoice, processSound, voiceProfile } from '../audio/studio';
 import { loadSampleProfile } from './StudioTab';
@@ -19,7 +19,9 @@ export function VoiceTab({ onStudio, onTimeline }: {
   onTimeline: (buf: AudioBuffer, name: string) => Promise<void>;
 }) {
   const [lang, setLang] = useState('hi');
-  const [voice, setVoice] = useState('kokoro:hm_omega');
+  const [voice, setVoice] = useState(() => (getSarvamKey() ? 'sarvam:shubh' : 'kokoro:hm_psi'));
+  const [key, setKey] = useState(getSarvamKey());
+  const [showKey, setShowKey] = useState(false);
   const [tone, setTone] = useState<'natural' | 'deep' | 'deeper' | 'sample'>('natural');
   const sample = loadSampleProfile();
   const [polish, setPolish] = useState(true);
@@ -43,6 +45,8 @@ export function VoiceTab({ onStudio, onTimeline }: {
 
   const voices = VOICES.filter((v) => v.lang === lang);
   const cleaned = cleanScript(text, lang);
+  const cloudVoice = voice.startsWith('sarvam:');
+  const studio = voices.filter((v) => v.cloud);
   const words = cleaned.text ? cleaned.text.split(/\s+/).length : 0;
   const estimate = words / (2.4 * speed) + sentences(cleaned.text).length * 0.5 * pause;
   const name = `voiceover-${VOICES.find((v) => v.id === voice)?.label.split(' ')[0].toLowerCase() ?? 'voice'}${tone !== 'natural' ? `-${tone === 'sample' ? 'matched' : tone}` : ''}`;
@@ -60,7 +64,7 @@ export function VoiceTab({ onStudio, onTimeline }: {
         // deeper voice keeps its natural character (formant-preserving pitch shift) + warm, even studio finish
         b = await processSound(b, {
           ...DEFAULT_STUDIO,
-          ...(polish ? CLEAR_FINISH : {}),
+          ...(polish ? (cloudVoice ? { lowCut: 80, mud: -1.5, clarity: 1.5, presence: 1, compress: 0.35, loudness: -16 } : CLEAR_FINISH) : {}),
           ...(tone === 'deep' ? { pitch: -1.5, bass: 1.5 } : tone === 'deeper' ? { pitch: -3, bass: 2.5 } : {}),
         }, (stage, p) => { setBusy(stage === 'Done' ? 'Finishing…' : stage); setPct(p); });
       }
@@ -76,7 +80,7 @@ export function VoiceTab({ onStudio, onTimeline }: {
         <h3 className="tool-title">🗣 Voice-over from text</h3>
         <div className="chips">
           {LANGS.map(([k, l]) => (
-            <button key={k} className={`chip ${lang === k ? 'on' : ''}`} onClick={() => { setLang(k); setVoice(VOICES.find((v) => v.lang === k)!.id); }}>{l}</button>
+            <button key={k} className={`chip ${lang === k ? 'on' : ''}`} onClick={() => { setLang(k); setVoice((VOICES.find((v) => v.lang === k && (key || !v.cloud)) ?? VOICES.find((v) => v.lang === k))!.id); }}>{l}</button>
           ))}
         </div>
         <textarea className="vo-text" lang={lang} value={text} onChange={(e) => setText(e.target.value)} rows={9}
@@ -120,9 +124,32 @@ export function VoiceTab({ onStudio, onTimeline }: {
 
       <aside className="tool-side card">
         <b className="small">Voice</b>
+        {studio.length > 0 && (
+          <div className={`voice-card ${cloudVoice ? 'on' : ''}`} style={{ display: 'block', marginTop: 6 }} onClick={() => { if (!cloudVoice) setVoice(studio[0].id); }}>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <b>🎙 Studio voices <span className="small muted">— most human · Sarvam AI</span></b>
+              <span className="small muted">{key ? '✓ key saved' : 'online'}</span>
+            </div>
+            <select value={cloudVoice ? voice : ''} onChange={(e) => setVoice(e.target.value)} style={{ marginTop: 6 }} aria-label="Studio voice">
+              {!cloudVoice && <option value="">Choose a studio voice…</option>}
+              <optgroup label="Male">{studio.filter((v) => v.gender === 'male').map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}</optgroup>
+              <optgroup label="Female">{studio.filter((v) => v.gender === 'female').map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}</optgroup>
+            </select>
+            {(cloudVoice || !key) && (
+              <div className="small" style={{ marginTop: 6 }}>
+                {key && !showKey ? <span className="muted">Uses your Sarvam key on this computer. <button className="btn small" onClick={() => setShowKey(true)}>Change key</button></span> : (
+                  <>
+                    <input type="password" placeholder="Paste your Sarvam API key" defaultValue={key} onBlur={(e) => { setSarvamKey(e.target.value); setKey(e.target.value.trim()); setShowKey(false); }} aria-label="Sarvam API key" />
+                    <div className="muted" style={{ marginTop: 4 }}>Get a free key at <a href="https://dashboard.sarvam.ai" target="_blank" rel="noreferrer">dashboard.sarvam.ai</a> (free starting credits, then about ₹3 per 1,000 characters). The key stays in this browser; the script text is sent to Sarvam to be spoken.</div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <div className="col" style={{ gap: 6, marginTop: 6 }}>
-          {voices.map((v, i) => (<div key={v.id} className="col" style={{ gap: 6 }}>
-            {(i === 0 || voices[i - 1].hd !== v.hd) && <div className="studio-group" style={{ marginTop: i ? 6 : 0, borderTop: i ? undefined : 0, paddingTop: i ? undefined : 0 }}>{v.hd ? '✨ Natural HD — most human' : 'Light — small download'}</div>}
+          {voices.filter((v) => !v.cloud).map((v, i, list) => (<div key={v.id} className="col" style={{ gap: 6 }}>
+            {(i === 0 || list[i - 1].hd !== v.hd) && <div className="studio-group" style={{ marginTop: i ? 6 : 0, borderTop: i ? undefined : 0, paddingTop: i ? undefined : 0 }}>{v.hd ? '✨ Natural HD — offline, free' : 'Light — small download'}</div>}
             <label key={v.id} className={`voice-card ${voice === v.id ? 'on' : ''}`}>
               <input type="radio" name="voice" checked={voice === v.id} onChange={() => setVoice(v.id)} />
               <span className="grow">

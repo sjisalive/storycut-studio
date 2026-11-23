@@ -3,9 +3,46 @@
 // Engine files are served by this site; each voice downloads once (~60 MB) and is kept in the
 // browser's cache, after which it works offline.
 
-export interface VoiceDef { id: string; label: string; lang: 'hi' | 'en' | 'ml' | 'ne'; gender: 'male' | 'female'; note?: string; hd?: boolean; deep?: boolean }
+export interface VoiceDef { id: string; label: string; lang: 'hi' | 'en' | 'ml' | 'ne'; gender: 'male' | 'female'; note?: string; hd?: boolean; deep?: boolean; cloud?: boolean }
 
 export const VOICES: VoiceDef[] = [
+  // Studio voices (Sarvam AI Bulbul v3, online with the user's own API key): trained on Indian speech, most human
+  { id: 'sarvam:shubh', label: 'Shubh', lang: 'hi', gender: 'male', cloud: true },
+  { id: 'sarvam:aditya', label: 'Aditya', lang: 'hi', gender: 'male', cloud: true },
+  { id: 'sarvam:rahul', label: 'Rahul', lang: 'hi', gender: 'male', cloud: true },
+  { id: 'sarvam:kabir', label: 'Kabir', lang: 'hi', gender: 'male', cloud: true },
+  { id: 'sarvam:anand', label: 'Anand', lang: 'hi', gender: 'male', cloud: true },
+  { id: 'sarvam:ashutosh', label: 'Ashutosh', lang: 'hi', gender: 'male', cloud: true },
+  { id: 'sarvam:amit', label: 'Amit', lang: 'hi', gender: 'male', cloud: true },
+  { id: 'sarvam:varun', label: 'Varun', lang: 'hi', gender: 'male', cloud: true },
+  { id: 'sarvam:manan', label: 'Manan', lang: 'hi', gender: 'male', cloud: true },
+  { id: 'sarvam:vijay', label: 'Vijay', lang: 'hi', gender: 'male', cloud: true },
+  { id: 'sarvam:ritu', label: 'Ritu', lang: 'hi', gender: 'female', cloud: true },
+  { id: 'sarvam:priya', label: 'Priya', lang: 'hi', gender: 'female', cloud: true },
+  { id: 'sarvam:neha', label: 'Neha', lang: 'hi', gender: 'female', cloud: true },
+  { id: 'sarvam:shreya', label: 'Shreya', lang: 'hi', gender: 'female', cloud: true },
+  { id: 'sarvam:ishita', label: 'Ishita', lang: 'hi', gender: 'female', cloud: true },
+  { id: 'sarvam:kavya', label: 'Kavya', lang: 'hi', gender: 'female', cloud: true },
+  { id: 'sarvam:pooja', label: 'Pooja', lang: 'hi', gender: 'female', cloud: true },
+  { id: 'sarvam:simran', label: 'Simran', lang: 'hi', gender: 'female', cloud: true },
+  { id: 'sarvam:shubh:en', label: 'Shubh', lang: 'en', gender: 'male', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:aditya:en', label: 'Aditya', lang: 'en', gender: 'male', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:rahul:en', label: 'Rahul', lang: 'en', gender: 'male', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:kabir:en', label: 'Kabir', lang: 'en', gender: 'male', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:anand:en', label: 'Anand', lang: 'en', gender: 'male', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:ashutosh:en', label: 'Ashutosh', lang: 'en', gender: 'male', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:amit:en', label: 'Amit', lang: 'en', gender: 'male', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:varun:en', label: 'Varun', lang: 'en', gender: 'male', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:manan:en', label: 'Manan', lang: 'en', gender: 'male', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:vijay:en', label: 'Vijay', lang: 'en', gender: 'male', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:ritu:en', label: 'Ritu', lang: 'en', gender: 'female', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:priya:en', label: 'Priya', lang: 'en', gender: 'female', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:neha:en', label: 'Neha', lang: 'en', gender: 'female', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:shreya:en', label: 'Shreya', lang: 'en', gender: 'female', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:ishita:en', label: 'Ishita', lang: 'en', gender: 'female', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:kavya:en', label: 'Kavya', lang: 'en', gender: 'female', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:pooja:en', label: 'Pooja', lang: 'en', gender: 'female', cloud: true, note: 'Indian English' },
+  { id: 'sarvam:simran:en', label: 'Simran', lang: 'en', gender: 'female', cloud: true, note: 'Indian English' },
   // Natural HD voices (Kokoro, Apache-2.0): much more human rhythm and intonation
   { id: 'kokoro:hm_omega', label: 'Omega', lang: 'hi', gender: 'male', hd: true, deep: true, note: 'deep, warm' },
   { id: 'kokoro:hm_psi', label: 'Psi', lang: 'hi', gender: 'male', hd: true, note: 'clear' },
@@ -119,6 +156,7 @@ async function fetchCached(url: string, onProgress?: (p: number) => void): Promi
 }
 
 export async function isVoiceDownloaded(id: string) {
+  if (id.startsWith('sarvam:')) return !!getSarvamKey();
   if (!('caches' in window)) return false;
   const cache = await caches.open('storycut-voices-v1');
   if (id.startsWith('kokoro:')) return !!(await cache.match(kokoroModelUrl()));
@@ -309,6 +347,7 @@ export interface TtsOptions { speed: number; variation: number; pause: number } 
 export async function speak(text: string, voiceId: string, o: TtsOptions, onProgress: (stage: string, p: number) => void): Promise<AudioBuffer> {
   const v = VOICES.find((x) => x.id === voiceId);
   text = cleanScript(text, v?.lang ?? 'en').text;
+  if (voiceId.startsWith('sarvam:')) return speakSarvam(text, voiceId, o, onProgress);
   if (voiceId.startsWith('kokoro:')) return speakKokoro(text, voiceId, o, onProgress);
   const { session, config } = await loadVoice(voiceId, (p) => onProgress('Downloading voice (once)…', p));
   const ort = await getOrt();
@@ -340,4 +379,67 @@ export async function speak(text: string, voiceId: string, o: TtsOptions, onProg
   for (const a of pcm) { ch.set(a, off); off += a.length; }
   onProgress('Done', 1);
   return buf;
+}
+
+// ---------- Studio voices: Sarvam AI (Bulbul v3) ----------
+export function getSarvamKey(): string { try { return localStorage.getItem('sc-sarvam-key') || ''; } catch { return ''; } }
+export function setSarvamKey(k: string) { try { if (k) localStorage.setItem('sc-sarvam-key', k.trim()); else localStorage.removeItem('sc-sarvam-key'); } catch { /* */ } }
+const SARVAM_URL = () => (window as any).__sarvamUrl ?? 'https://api.sarvam.ai/text-to-speech';
+
+/** Split into requests of at most `max` characters, at paragraph, then sentence, then word boundaries. */
+function packText(text: string, max = 2200): { text: string; paraEnd: boolean }[] {
+  const out: { text: string; paraEnd: boolean }[] = [];
+  for (const para of text.split(/\n\s*\n|\n/).map((p) => p.trim()).filter(Boolean)) {
+    let cur = '';
+    const parts = para.match(/[^.!?।॥]+[.!?।॥]*\s*/g) ?? [para];
+    for (let p of parts) {
+      while (p.length > max) { const cut = p.lastIndexOf(' ', max) > 0 ? p.lastIndexOf(' ', max) : max; if (cur) { out.push({ text: cur.trim(), paraEnd: false }); cur = ''; } out.push({ text: p.slice(0, cut).trim(), paraEnd: false }); p = p.slice(cut); }
+      if ((cur + p).length > max) { out.push({ text: cur.trim(), paraEnd: false }); cur = ''; }
+      cur += p;
+    }
+    if (cur.trim()) out.push({ text: cur.trim(), paraEnd: true });
+  }
+  return out;
+}
+
+async function speakSarvam(text: string, voiceId: string, o: TtsOptions, onProgress: (stage: string, p: number) => void): Promise<AudioBuffer> {
+  const key = getSarvamKey();
+  if (!key) throw new Error('Add your Sarvam API key first (box under the voice list).');
+  const [, speaker, en] = voiceId.split(':');
+  const pieces = packText(text);
+  if (!pieces.length) throw new Error('Type some text first.');
+  const ctx = new OfflineAudioContext(1, 1, 44100);
+  const bufs: { buf: AudioBuffer; gap: number }[] = [];
+  for (let i = 0; i < pieces.length; i++) {
+    onProgress(`Studio voice: part ${i + 1} of ${pieces.length}…`, i / pieces.length);
+    let res: Response;
+    try {
+      res = await fetch(SARVAM_URL(), {
+        method: 'POST',
+        headers: { 'api-subscription-key': key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: pieces[i].text, model: 'bulbul:v3', speaker, language_code: en ? 'en-IN' : 'hi-IN',
+          pace: Math.max(0.5, Math.min(2, o.speed)), temperature: Math.max(0.01, Math.min(1, 0.3 + o.variation * 0.6)),
+          speech_sample_rate: 44100, output_audio_codec: 'wav',
+        }),
+      });
+    } catch {
+      throw new Error('Could not reach Sarvam AI. Check the internet connection (some office networks block it), or use a Natural HD voice.');
+    }
+    if (res.status === 401 || res.status === 403) throw new Error('Sarvam did not accept the API key. Copy it again from dashboard.sarvam.ai.');
+    if (res.status === 402 || res.status === 429) throw new Error('Sarvam says the credits or the rate limit are used up. Check your Sarvam dashboard.');
+    if (!res.ok) throw new Error(`Sarvam error ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const j = await res.json();
+    const parts: AudioBuffer[] = [];
+    for (const b64 of j.audios ?? []) {
+      const bin = atob(b64), bytes = new Uint8Array(bin.length);
+      for (let k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k);
+      parts.push(await ctx.decodeAudioData(bytes.buffer));
+    }
+    parts.forEach((b, k) => bufs.push({ buf: b, gap: k === parts.length - 1 ? (i === pieces.length - 1 ? 0 : pieces[i].paraEnd ? 0.7 * Math.max(0.3, o.pause / 0.6) : 0.25) : 0.25 }));
+  }
+  const sr = bufs[0].buf.sampleRate;
+  const pcm: Float32Array[] = [];
+  for (const { buf, gap } of bufs) { pcm.push(buf.getChannelData(0)); if (gap > 0) pcm.push(new Float32Array(Math.round(sr * gap))); }
+  return join(pcm, sr, onProgress);
 }
