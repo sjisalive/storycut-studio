@@ -9,6 +9,15 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // If the app has not started after a while (old cached page, blocked script, very old browser), say so instead of showing a blank page.
+      setTimeout(function () {
+        var r = document.getElementById('root');
+        if (r && !r.children.length) r.innerHTML = '<div style="max-width:560px;margin:12vh auto;padding:24px;font-family:system-ui,sans-serif;border:1px solid #dfe7e1;border-radius:14px">' +
+          '<h2 style="margin-top:0">StoryCut Studio did not start</h2><p>Press <b>Ctrl + Shift + R</b> (Mac: Cmd + Shift + R) to reload the newest version. ' +
+          'If it stays blank, use a recent Chrome or Edge.</p><button onclick="location.reload()" style="padding:10px 18px;border-radius:10px;border:0;background:#4f8f63;color:#fff;font-size:15px">↻ Reload</button></div>';
+      }, 10000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
