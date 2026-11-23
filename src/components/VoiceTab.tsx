@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { cleanScript, getHdQuality, isVoiceDownloaded, sentences, setHdQuality, speak, VOICES, type HdQuality } from '../audio/tts';
 import { Note, Progress } from './common';
-import { DEFAULT_STUDIO, matchVoice, processSound, voiceProfile } from '../audio/studio';
+import { CLEAR_FINISH, DEFAULT_STUDIO, matchVoice, processSound, voiceProfile } from '../audio/studio';
 import { loadSampleProfile } from './StudioTab';
 import { BufWave, FmtSelect, saveBuffer, secs, useBufferPlayer, type AudioFmt } from './audioUi';
 
@@ -55,13 +55,13 @@ export function VoiceTab({ onStudio, onTimeline }: {
       if (tone === 'sample' && sample) {
         setBusy('Matching your sample voice…');
         const m = matchVoice(voiceProfile(b), sample);
-        b = await processSound(b, { ...DEFAULT_STUDIO, ...m, ...(polish ? {} : { compress: 0, loudness: null }) }, (stage, p) => { setBusy(stage === 'Done' ? 'Finishing…' : stage); setPct(p); });
+        b = await processSound(b, { ...DEFAULT_STUDIO, ...m, ...(polish ? { treble: Math.max(m.treble ?? 0, 3), presence: Math.max(m.presence ?? 0, 3), air: true } : { compress: 0, loudness: null }) }, (stage, p) => { setBusy(stage === 'Done' ? 'Finishing…' : stage); setPct(p); });
       } else if (tone !== 'natural' || polish) {
         // deeper voice keeps its natural character (formant-preserving pitch shift) + warm, even studio finish
         b = await processSound(b, {
           ...DEFAULT_STUDIO,
-          ...(tone === 'deep' ? { pitch: -1.5, bass: 2.5 } : tone === 'deeper' ? { pitch: -3, bass: 4 } : {}),
-          ...(polish ? { lowCut: 60, presence: 1.5, treble: 1, compress: 0.4, loudness: -16 } : {}),
+          ...(polish ? CLEAR_FINISH : {}),
+          ...(tone === 'deep' ? { pitch: -1.5, bass: 1.5 } : tone === 'deeper' ? { pitch: -3, bass: 2.5 } : {}),
         }, (stage, p) => { setBusy(stage === 'Done' ? 'Finishing…' : stage); setPct(p); });
       }
       setOut(b);
@@ -152,7 +152,7 @@ export function VoiceTab({ onStudio, onTimeline }: {
           {sample && <button className={`chip ${tone === 'sample' ? 'on' : ''}`} title={`Pitch, liveliness, pace and tone of “${sample.name}”`} onClick={() => setTone('sample')}>🎯 Like my sample</button>}
         </div>
         {!sample && <div className="small muted" style={{ marginTop: -4, marginBottom: 10 }}>Want it to sound like a voice you have? In 🎚 Sound Studio use <b>Sound like a sample voice</b> once; it then appears here.</div>}
-        <label className="row small" style={{ marginBottom: 10 }}><input type="checkbox" checked={polish} onChange={(e) => setPolish(e.target.checked)} /> Studio finish (warm, even level, −16 LUFS)</label>
+        <label className="row small" style={{ marginBottom: 10 }}><input type="checkbox" checked={polish} onChange={(e) => setPolish(e.target.checked)} /> Clear & natural finish (brighter, clearer, room sound, −16 LUFS)</label>
         {!VOICES.find((v) => v.id === voice)?.hd && <label className="field small">Expression <b>{variation < 0.3 ? 'flat' : variation < 0.7 ? 'natural' : 'lively'}</b>
           <input type="range" min={0} max={1} step={0.05} value={variation} onChange={(e) => setVariation(+e.target.value)} />
         </label>}

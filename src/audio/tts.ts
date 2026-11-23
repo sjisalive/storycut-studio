@@ -175,33 +175,61 @@ async function speakKokoro(text: string, voiceId: string, o: TtsOptions, onProgr
   const list = sentences(text);
   if (!list.length) throw new Error('Type some text first.');
   const inName = session.inputNames.includes('input_ids') ? 'input_ids' : 'tokens';
-  const pcm: Float32Array[] = [];
+  // Phonemes per sentence, then several sentences of a paragraph are spoken in ONE pass, so the
+  // model carries its natural flow from sentence to sentence (speaking each alone sounds mechanical).
+  const toks: number[][] = [];
   for (let i = 0; i < list.length; i++) {
-    onProgress(`Speaking sentence ${i + 1} of ${list.length}…`, i / list.length);
+    onProgress('Reading the script…', i / list.length / 5);
     let t = list[i].text.replace(/[।॥]/g, '.').trim();
     if (!/[.!?,;:]$/.test(t)) t += '.';
     const ps = await kokoroPhonemes(t, lang);
-    let ids = [...ps].map((c) => KOKORO_VOCAB.get(c)).filter((x): x is number => x !== undefined);
-    // the model takes at most 510 symbols; very long sentences are spoken in parts
-    const parts: number[][] = [];
-    while (ids.length > 500) { let cut = ids.lastIndexOf(16, 500); if (cut < 200) cut = 500; parts.push(ids.slice(0, cut)); ids = ids.slice(cut); }
-    parts.push(ids);
-    for (const part of parts) {
-      if (!part.length) continue;
-      const row = Math.min(part.length, 509);
-      const feeds: Record<string, any> = {
-        [inName]: new ort.Tensor('int64', BigInt64Array.from([0, ...part, 0].map((x) => BigInt(x))), [1, part.length + 2]),
-        style: new ort.Tensor('float32', style.slice(row * 256, row * 256 + 256), [1, 256]),
-        speed: new ort.Tensor('float32', Float32Array.from([Math.max(0.5, Math.min(2, o.speed))]), [1]),
-      };
-      const out = await session.run(feeds);
-      pcm.push((out.waveform ?? out.audio ?? Object.values(out)[0]).data as Float32Array);
+    toks.push([...ps].map((c) => KOKORO_VOCAB.get(c)).filter((x): x is number => x !== undefined));
+  }
+  const chunks: { ids: number[]; pauseAfter: number }[] = [];
+  let cur: number[] = [];
+  for (let i = 0; i < list.length; i++) {
+    let ids = toks[i];
+    while (ids.length > 480) { // very long sentence: split at a space
+      let cut = ids.lastIndexOf(16, 480); if (cut < 200) cut = 480;
+      if (cur.length) { chunks.push({ ids: cur, pauseAfter: 0 }); cur = []; }
+      chunks.push({ ids: ids.slice(0, cut), pauseAfter: 0.05 }); ids = ids.slice(cut);
     }
-    const gap = Math.round(sr * list[i].pauseAfter * o.pause);
-    if (gap > 0) pcm.push(new Float32Array(gap));
+    if (cur.length && cur.length + 1 + ids.length > 380) { chunks.push({ ids: cur, pauseAfter: 0.75 }); cur = []; }
+    cur = cur.length ? [...cur, 16, ...ids] : [...ids];
+    const p = list[i].pauseAfter;
+    if (p > 1 || i === list.length - 1) { chunks.push({ ids: cur, pauseAfter: p }); cur = []; } // paragraph end
+  }
+  const pcm: Float32Array[] = [];
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let i = 0; i < chunks.length; i++) {
+    onProgress(`Speaking part ${i + 1} of ${chunks.length}…`, 0.2 + (0.8 * i) / chunks.length);
+    const part = chunks[i].ids;
+    if (!part.length) continue;
+    const row = Math.min(part.length, 509);
+    const sp = o.speed * (0.975 + rnd() * 0.05); // tiny pace changes like a real reader
+    const feeds: Record<string, any> = {
+      [inName]: new ort.Tensor('int64', BigInt64Array.from([0, ...part, 0].map((x) => BigInt(x))), [1, part.length + 2]),
+      style: new ort.Tensor('float32', style.slice(row * 256, row * 256 + 256), [1, 256]),
+      speed: new ort.Tensor('float32', Float32Array.from([Math.max(0.5, Math.min(2, sp))]), [1]),
+    };
+    const out = await session.run(feeds);
+    pcm.push(trimEdges((out.waveform ?? out.audio ?? Object.values(out)[0]).data as Float32Array, sr));
+    const gap = Math.round(sr * (0.12 + chunks[i].pauseAfter * o.pause * (0.85 + rnd() * 0.3)));
+    if (i < chunks.length - 1) pcm.push(new Float32Array(gap));
     await new Promise((r) => setTimeout(r, 0));
   }
   return join(pcm, sr, onProgress);
+}
+
+/** Remove the model's own silence at both ends (pauses are then set evenly by us). */
+function trimEdges(a: Float32Array, sr: number) {
+  let pk = 0; for (let i = 0; i < a.length; i++) pk = Math.max(pk, Math.abs(a[i]));
+  const th = pk * 0.01, pad = Math.round(sr * 0.04);
+  let s = 0, e = a.length - 1;
+  while (s < a.length && Math.abs(a[s]) < th) s++;
+  while (e > s && Math.abs(a[e]) < th) e--;
+  return a.slice(Math.max(0, s - pad), Math.min(a.length, e + pad * 2));
 }
 
 function join(pcm: Float32Array[], sr: number, onProgress: (stage: string, p: number) => void) {

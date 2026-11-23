@@ -108,14 +108,15 @@ Type or paste a script in Hindi, English, Malayalam or Nepali and press **Make v
 - **Voice tone:** Natural, **Deep** or **Extra deep** — lowers the pitch while keeping the voice's own character (formant-preserving PSOLA), with added warmth.
 - **Clean script:** time codes (00:05–00:39), [directions], headings and English notes inside a Hindi script are left out automatically — the tab lists what will not be read.
 - **HD quality:** Best (full model, clearest, ≈310 MB once) or Fast (≈90 MB, slightly hissy).
-- **Studio finish:** warm EQ, even level and −16 LUFS loudness, on by default.
+- **Clear & natural finish** (on by default): less boom, more clarity and treble, soft room sound and light breaths, even level at −16 LUFS.
+- Sentences of a paragraph are spoken in one flow (not one by one) with slightly varied pace and pauses, so it sounds read rather than assembled.
 - Sliders for **speed** and **pause between sentences** (and **expression** for light voices). A full stop or `।` gives a short pause and a new line a longer one; numbers read best written as words.
 Then **Save** (MP3 192/320 kbps or WAV), **＋ Add to video** (goes on the Voice track at the playhead and the music dips under it), or **Edit sound** to open it in Sound Studio.
 The voices are open-source models (Kokoro-82M, Apache-2.0; Piper, MIT) that run on your computer — nothing is uploaded and no account is needed. They download once from Hugging Face and then work offline. HD voices take roughly 1–2× the length of the speech to generate; the page stays usable while they work.
 
 ### 🎚 Sound Studio tab
 Open any MP3/WAV/video (or a file already in the project, or a voice-over you just made) and change:
-- **Tone:** bass, middle, presence, treble, low cut (rumble removal)
+- **Tone:** bass, boominess, middle, clarity, presence, treble, low cut (rumble removal)
 - **Voice:** speed *without changing pitch*, pitch *without changing speed* (±12 semitones, keeps the voice natural), intonation (flatter ↔ livelier), volume
 - **Level:** compression, loudness target (−14 LUFS for YouTube/Instagram/WhatsApp, −16 voice-over, −18, −23 TV), peak limit
 - **Space:** echo, reverb

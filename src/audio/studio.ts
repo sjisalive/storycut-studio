@@ -11,6 +11,9 @@ export interface StudioSettings {
   speed: number; // 0.5–2 (pitch kept)
   pitch: number; // semitones −12…+12
   character?: boolean; // false = cartoon pitch change (voice character changes too)
+  clarity?: number; // dB around 2 kHz — makes words easier to follow
+  mud?: number; // dB around 300 Hz (negative removes boominess)
+  air?: boolean; // soft room tone + light breaths before phrases (sounds recorded, not generated)
   intonation?: number; // 1 = as recorded; >1 livelier rise and fall, <1 flatter
   compress: number; // 0–1
   echo: number; // 0–1
@@ -29,7 +32,7 @@ export const DEFAULT_STUDIO: StudioSettings = {
 };
 
 export const STUDIO_PRESETS: [string, string, Partial<StudioSettings>][] = [
-  ['clear', '✨ Clear voice-over', { lowCut: 90, mid: -1, presence: 3, treble: 3, compress: 0.5, loudness: -16, maxPause: 0.8 }],
+  ['clear', '✨ Clear voice-over', { lowCut: 100, bass: -2, mud: -3, clarity: 4, presence: 5, treble: 5, compress: 0.45, loudness: -16, maxPause: 0.8, air: true }],
   ['deep', '🎙 Deep voice', { pitch: -2.5, bass: 4, lowCut: 50, mid: -1, presence: 1.5, compress: 0.45, loudness: -16 }],
   ['radio', '📻 Radio announcer', { lowCut: 100, bass: 3, mid: -2, presence: 4, treble: 2, compress: 0.85, loudness: -14 }],
   ['podcast', '🎧 Warm podcast', { lowCut: 70, bass: 2, mid: 0, presence: 1.5, treble: -1, compress: 0.6, loudness: -16 }],
@@ -102,7 +105,9 @@ export async function processSound(input: AudioBuffer, s: StudioSettings, onProg
   if (s.lowCut > 0) for (let k = 0; k < 2; k++) { const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = s.lowCut; f.Q.value = k ? 1.31 : 0.54; chain(f); } // 24 dB/octave
   const eq = (type: BiquadFilterType, freq: number, gain: number, q = 0.9) => { if (!gain) return; const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.gain.value = gain; f.Q.value = q; chain(f); };
   eq('lowshelf', 160, s.bass);
+  eq('peaking', 300, s.mud ?? 0, 1.1);
   eq('peaking', 800, s.mid, 0.8);
+  eq('peaking', 2000, s.clarity ?? 0, 0.8);
   eq('peaking', 3500, s.presence, 1);
   eq('highshelf', 6500, s.treble);
   if (s.compress > 0) {
@@ -147,8 +152,45 @@ export async function processSound(input: AudioBuffer, s: StudioSettings, onProg
     for (let c = 0; c < res.numberOfChannels; c++) { const d = res.getChannelData(c); for (let i = 0; i < d.length; i++) pk = Math.max(pk, Math.abs(d[i])); }
     if (pk > 0.99) for (let c = 0; c < res.numberOfChannels; c++) { const d = res.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] *= 0.97 / pk; }
   }
+  if (s.air) addAir(res);
   onProgress('Done', 1);
   return res;
+}
+
+/** The finish used for new voice-overs: clear, bright speech with a natural, recorded feel. */
+export const CLEAR_FINISH: Partial<StudioSettings> = { lowCut: 100, bass: -2, mud: -3, mid: 0, clarity: 4, presence: 5, treble: 5, compress: 0.45, loudness: -16, air: true };
+
+/** Soft room tone everywhere and a quiet breath before some phrases. */
+function addAir(buf: AudioBuffer) {
+  const sr = buf.sampleRate, n = buf.length;
+  const mono = buf.getChannelData(0);
+  let seed = 11; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const noise = () => (rnd() + rnd() + rnd() - 1.5) * 1.2;
+  // phrase onsets after pauses of 0.35 s or more
+  const fr = Math.round(sr * 0.01), frames = Math.floor(n / fr), lvl = new Float32Array(frames);
+  let top = 0;
+  for (let f = 0; f < frames; f++) { let e = 0; for (let i = f * fr; i < (f + 1) * fr; i++) e += mono[i] * mono[i]; lvl[f] = Math.sqrt(e / fr); if (lvl[f] > top) top = lvl[f]; }
+  const quiet = (f: number) => lvl[f] < top * 0.02;
+  const onsets: number[] = [];
+  let run = 0;
+  for (let f = 0; f < frames; f++) { if (quiet(f)) run++; else { if (run >= 35 && f > 40) onsets.push(f * fr); run = 0; } }
+  const add = new Float32Array(n);
+  // breath: band-limited noise with a soft swell, ~0.3 s, ending 80 ms before the phrase
+  for (const at of onsets) {
+    if (rnd() > 0.6) continue;
+    const L = Math.round(sr * (0.24 + rnd() * 0.14)), start = at - Math.round(sr * 0.08) - L;
+    if (start < 0) continue;
+    const amp = 0.006 + rnd() * 0.004;
+    let lp = 0, hp = 0, prev = 0;
+    for (let i = 0; i < L; i++) {
+      const w = noise(); lp += 0.35 * (w - lp); hp = 0.92 * (hp + lp - prev); prev = lp;
+      add[start + i] += hp * amp * Math.pow(Math.sin((Math.PI * i) / L), 1.6);
+    }
+  }
+  // room tone ≈ −64 dBFS, slightly darker than white noise
+  let lp = 0;
+  for (let i = 0; i < n; i++) { lp += 0.25 * (noise() - lp); add[i] += lp * 0.0009; }
+  for (let c = 0; c < buf.numberOfChannels; c++) { const d = buf.getChannelData(c); for (let i = 0; i < n; i++) d[i] += add[i]; }
 }
 
 /** Quick measurements shown to the user (and used to suggest settings). */

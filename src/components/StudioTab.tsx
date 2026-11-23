@@ -179,7 +179,9 @@ export function StudioTab({ input, media, onTimeline }: {
 
         <div className="studio-group">Tone</div>
         <Slider label="Bass" value={s.bass} min={-12} max={12} step={0.5} show={db(s.bass)} onChange={(v) => set({ bass: v })} hint="Low frequencies (below ~160 Hz): fuller, deeper" />
+        <Slider label="Boominess" value={s.mud ?? 0} min={-12} max={6} step={0.5} show={db(s.mud ?? 0)} onChange={(v) => set({ mud: v })} hint="Around 300 Hz: lower it to remove a boomy, muffled sound" />
         <Slider label="Middle" value={s.mid} min={-12} max={12} step={0.5} show={db(s.mid)} onChange={(v) => set({ mid: v })} hint="Around 800 Hz: lower it to remove a boxy sound" />
+        <Slider label="Clarity" value={s.clarity ?? 0} min={-12} max={12} step={0.5} show={db(s.clarity ?? 0)} onChange={(v) => set({ clarity: v })} hint="Around 2 kHz: makes words easier to follow" />
         <Slider label="Presence" value={s.presence} min={-12} max={12} step={0.5} show={db(s.presence)} onChange={(v) => set({ presence: v })} hint="Around 3.5 kHz: makes speech clear and forward" />
         <Slider label="Treble" value={s.treble} min={-12} max={12} step={0.5} show={db(s.treble)} onChange={(v) => set({ treble: v })} hint="Above ~6.5 kHz: brightness and air" />
         <Slider label="Low cut" value={s.lowCut} min={0} max={250} step={10} show={s.lowCut ? `${s.lowCut} Hz` : 'off'} onChange={(v) => set({ lowCut: v })} hint="Removes rumble, fan and handling noise" />
@@ -218,6 +220,7 @@ export function StudioTab({ input, media, onTimeline }: {
         </label>
         <Slider label="Fade in" value={s.fadeIn} min={0} max={5} step={0.1} show={s.fadeIn ? `${s.fadeIn.toFixed(1)} s` : 'off'} onChange={(v) => set({ fadeIn: v })} />
         <Slider label="Fade out" value={s.fadeOut} min={0} max={5} step={0.1} show={s.fadeOut ? `${s.fadeOut.toFixed(1)} s` : 'off'} onChange={(v) => set({ fadeOut: v })} />
+        <label className="row small"><input type="checkbox" checked={!!s.air} onChange={(e) => set({ air: e.target.checked })} /> Natural room sound & soft breaths</label>
         <label className="row small"><input type="checkbox" checked={s.telephone} onChange={(e) => set({ telephone: e.target.checked })} /> Telephone / walkie-talkie sound</label>
         <label className="row small"><input type="checkbox" checked={s.mono} onChange={(e) => set({ mono: e.target.checked })} /> Save as mono (one channel, smaller file)</label>
       </aside>
