@@ -11,6 +11,7 @@ export interface StudioSettings {
   speed: number; // 0.5–2 (pitch kept)
   pitch: number; // semitones −12…+12
   character?: boolean; // false = cartoon pitch change (voice character changes too)
+  intonation?: number; // 1 = as recorded; >1 livelier rise and fall, <1 flatter
   compress: number; // 0–1
   echo: number; // 0–1
   reverb: number; // 0–1
@@ -42,14 +43,14 @@ export const STUDIO_PRESETS: [string, string, Partial<StudioSettings>][] = [
   ['giant', '👹 Giant', { pitch: -6, bass: 3, character: false }],
 ];
 
-function runStretch(channels: Float32Array[], sr: number, rate: number, maxPause: number, onProgress: (p: number) => void, pitch = 0): Promise<Float32Array[]> {
-  if (Math.abs(rate - 1) < 1e-3 && maxPause <= 0 && !pitch) return Promise.resolve(channels);
+function runStretch(channels: Float32Array[], sr: number, rate: number, maxPause: number, onProgress: (p: number) => void, pitch = 0, expand = 1): Promise<Float32Array[]> {
+  if (Math.abs(rate - 1) < 1e-3 && maxPause <= 0 && !pitch && Math.abs(expand - 1) < 0.01) return Promise.resolve(channels);
   return new Promise((resolve, reject) => {
     const w = new Worker(new URL('./stretch.worker.ts', import.meta.url), { type: 'module' });
     w.onmessage = (e) => { if (e.data.progress !== undefined) onProgress(e.data.progress); else { w.terminate(); resolve(e.data.channels); } };
     w.onerror = (e) => { w.terminate(); reject(new Error(e.message)); };
     const copies = channels.map((c) => c.slice());
-    w.postMessage({ channels: copies, sampleRate: sr, rate, maxPause, pitch }, copies.map((c) => c.buffer));
+    w.postMessage({ channels: copies, sampleRate: sr, rate, maxPause, pitch, expand }, copies.map((c) => c.buffer));
   });
 }
 
@@ -78,7 +79,7 @@ export async function processSound(input: AudioBuffer, s: StudioSettings, onProg
   onProgress('Changing speed…', 0);
   let ch: Float32Array[] = Array.from({ length: buf.numberOfChannels }, (_, i) => buf.getChannelData(i));
   if (s.mono && ch.length > 1) { const m = new Float32Array(ch[0].length); for (let i = 0; i < m.length; i++) m[i] = (ch[0][i] + ch[1][i]) / 2; ch = [m]; }
-  ch = await runStretch(ch, sr, rate, s.maxPause, (p) => onProgress('Changing speed and pitch…', p), natural ? s.pitch : 0);
+  ch = await runStretch(ch, sr, rate, s.maxPause, (p) => onProgress('Changing speed and pitch…', p), natural ? s.pitch : 0, s.intonation ?? 1);
   const mid = new AudioBuffer({ length: Math.max(1, ch[0].length), numberOfChannels: ch.length, sampleRate: sr });
   ch.forEach((c, i) => mid.copyToChannel(c as Float32Array<ArrayBuffer>, i));
   // ---- filters & effects in an offline audio graph
@@ -168,4 +169,91 @@ export function analyse(buf: AudioBuffer) {
   let stereoSame = true;
   if (buf.numberOfChannels > 1) { const r = buf.getChannelData(1); for (let i = 0; i < d.length; i += 97) if (Math.abs(d[i] - r[i]) > 1e-3) { stereoSame = false; break; } }
   return { duration: buf.duration, peakDb: 20 * Math.log10(peak + 1e-9), clipped: clip, speechShare: active, channels: buf.numberOfChannels, mono: buf.numberOfChannels === 1 || stereoSame };
+}
+
+/** What a voice sounds like: pitch, liveliness, pace and brightness. */
+export interface VoiceProfile { f0: number; spread: number; rate: number; bands: number[] }
+
+export function voiceProfile(buf: AudioBuffer): VoiceProfile {
+  // 16 kHz mono copy
+  const src = buf.getChannelData(0), dec = buf.sampleRate / 16000;
+  const n = Math.floor(src.length / dec), x = new Float32Array(n);
+  for (let i = 0; i < n; i++) x[i] = src[Math.floor(i * dec)];
+  const sr = 16000, W = 640, lo = Math.floor(sr / 400), hi = Math.ceil(sr / 60);
+  let peak = 0; for (let i = 0; i < n; i += 7) peak = Math.max(peak, Math.abs(x[i]));
+  const f0: number[] = [];
+  for (let s0 = 0; s0 + W + hi < n; s0 += 480) {
+    let e0 = 0; for (let i = 0; i < W; i++) e0 += x[s0 + i] * x[s0 + i];
+    if (Math.sqrt(e0 / W) < peak * 0.04) continue;
+    let best = 0, bl = 0;
+    for (let L = lo; L <= hi; L++) { let c = 0, e1 = 0; for (let i = 0; i < W; i += 2) { const a = x[s0 + i + L]; c += x[s0 + i] * a; e1 += a * a; } const r = c / Math.sqrt((e0 / 2) * e1 + 1e-12); if (r > best) { best = r; bl = L; } }
+    if (best > 0.5) f0.push(sr / bl);
+  }
+  f0.sort((a, b) => a - b);
+  const med = f0[f0.length >> 1] || 120;
+  const st = f0.map((v) => 12 * Math.log2(v / med));
+  const spread = Math.sqrt(st.reduce((a, v) => a + v * v, 0) / Math.max(1, st.length));
+  // pace: loudness bumps per second of speech (≈ syllables)
+  // speech band 300–2500 Hz (one-pole high-pass + low-pass) so bass and hiss don't count
+  const bp = new Float32Array(n);
+  { const ah = Math.exp((-2 * Math.PI * 300) / sr), al = 1 - Math.exp((-2 * Math.PI * 2500) / sr); let hp = 0, px = 0, lp = 0;
+    for (let i = 0; i < n; i++) { hp = ah * (hp + x[i] - px); px = x[i]; lp += al * (hp - lp); bp[i] = lp; } }
+  const hop = 160, E: number[] = [];
+  for (let i = 0; i + hop < n; i += hop) { let s = 0; for (let k = 0; k < hop; k++) s += Math.abs(bp[i + k]); E.push(s / hop); }
+  const Es = E.map((_, i) => (E[i - 2] ?? 0) / 5 + (E[i - 1] ?? 0) / 5 + E[i] / 5 + (E[i + 1] ?? 0) / 5 + (E[i + 2] ?? 0) / 5);
+  const sorted = [...Es].sort((a, b) => a - b), top = sorted[Math.floor(sorted.length * 0.95)] || 1e-6;
+  let active = 0, bumps = 0, last = -99;
+  for (let i = 1; i < Es.length - 1; i++) {
+    if (Es[i] < top * 0.056) continue;
+    active++;
+    if (Es[i] > Es[i - 1] && Es[i] >= Es[i + 1] && i - last >= 10) {
+      // a bump counts when it stands out from the dip before it
+      let dip = Es[i]; for (let k = Math.max(last, i - 25); k < i; k++) dip = Math.min(dip, Es[k]);
+      if (Es[i] - dip > top * 0.15) { bumps++; last = i; }
+    }
+  }
+  const rate = bumps / Math.max(1, active / 100);
+  // brightness: energy in 80–250, 250–1k, 1–4k, 4–8k Hz (relative dB)
+  const full = buf.getChannelData(0), N = 4096, R = buf.sampleRate;
+  const edges = [80, 250, 1000, 4000, 8000].map((f) => Math.round((f / R) * N));
+  const acc = [0, 0, 0, 0];
+  const re = new Float64Array(N), im = new Float64Array(N);
+  for (let s0 = 0; s0 + N < full.length; s0 += N * 8) {
+    for (let i = 0; i < N; i++) { re[i] = full[s0 + i] * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / N)); im[i] = 0; }
+    fft(re, im);
+    for (let b = 0; b < 4; b++) for (let k = edges[b]; k < edges[b + 1]; k++) acc[b] += re[k] * re[k] + im[k] * im[k];
+  }
+  const dbs = acc.map((v) => 10 * Math.log10(v + 1e-12)), mx = Math.max(...dbs);
+  return { f0: med, spread, rate, bands: dbs.map((v) => v - mx) };
+}
+
+function fft(re: Float64Array, im: Float64Array) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) { let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; } }
+  for (let len = 2; len <= n; len <<= 1) {
+    const a = (-2 * Math.PI) / len, wr = Math.cos(a), wi = Math.sin(a);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const ur = re[i + k], ui = im[i + k], vr = re[i + k + len / 2] * cr - im[i + k + len / 2] * ci, vi = re[i + k + len / 2] * ci + im[i + k + len / 2] * cr;
+        re[i + k] = ur + vr; im[i + k] = ui + vi; re[i + k + len / 2] = ur - vr; im[i + k + len / 2] = ui - vi;
+        const t = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = t;
+      }
+    }
+  }
+}
+
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+/** Settings that bring a voice close to a sample voice (pitch, liveliness, pace, tone). */
+export function matchVoice(src: VoiceProfile, ref: VoiceProfile): Partial<StudioSettings> {
+  const r1 = (v: number) => Math.round(v * 2) / 2;
+  const d = (i: number) => clamp(ref.bands[i] - src.bands[i], -9, 9);
+  const pace = ref.rate / Math.max(1, src.rate);
+  return {
+    pitch: r1(clamp(12 * Math.log2(ref.f0 / src.f0), -7, 7)),
+    intonation: Math.round(clamp(ref.spread / Math.max(0.5, src.spread), 0.7, 1.6) * 100) / 100,
+    speed: Math.abs(pace - 1) < 0.05 ? 1 : Math.round(clamp(pace, 0.9, 1.15) * 20) / 20,
+    bass: r1(d(0) * 0.75 - Math.max(0, d(1)) / 2), mid: r1(d(1) * 0.75), presence: r1(d(2)), treble: r1(Math.max(-1, d(3) * 0.75)),
+    lowCut: 70, compress: 0.55, loudness: -16, character: true,
+  };
 }

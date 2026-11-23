@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MediaItem } from '../types';
 import { getAudioBuffer } from '../media';
 import { integratedLoudness } from '../audio/loudness';
-import { analyse, DEFAULT_STUDIO, processSound, STUDIO_PRESETS, type StudioSettings } from '../audio/studio';
+import { analyse, DEFAULT_STUDIO, matchVoice, processSound, STUDIO_PRESETS, voiceProfile, type StudioSettings, type VoiceProfile } from '../audio/studio';
+import { separateVoice } from '../audio/separate';
 import { Note, Progress } from './common';
 import { BufWave, decodeFile, FmtSelect, saveBuffer, secs, useBufferPlayer, type AudioFmt } from './audioUi';
 
@@ -44,6 +45,24 @@ export function StudioTab({ input, media, onTimeline }: {
   const [msg, setMsg] = useState('');
   const [fmt, setFmt] = useState<AudioFmt>('mp3');
   const fileRef = useRef<HTMLInputElement>(null);
+  const refRef = useRef<HTMLInputElement>(null);
+  const [refMusic, setRefMusic] = useState(true);
+  const [matched, setMatched] = useState('');
+  const matchTo = async (f: File) => {
+    if (!src) { setErr('Open the voice you want to change first, then pick the sample.'); return; }
+    setErr(''); setBusy('Listening to the sample…'); setPct(0);
+    try {
+      let rb = await decodeFile(f);
+      if (refMusic) rb = (await separateVoice(rb, 0.6, true, (p) => { setBusy('Isolating the sample voice from its music…'); setPct(p); })).voice;
+      const ref = voiceProfile(rb), me = voiceProfile(slice(src.buf, trim[0], trim[1] || src.buf.duration));
+      saveSampleProfile(ref, f.name);
+      const m = matchVoice(me, ref);
+      setS({ ...DEFAULT_STUDIO, ...m }); setPreset('');
+      const sign = (v: number) => (v > 0 ? `+${v}` : `${v}`);
+      setMatched(`Matched to “${f.name}”: sample voice ${Math.round(ref.f0)} Hz vs yours ${Math.round(me.f0)} Hz → pitch ${sign(m.pitch!)} semitones, intonation ×${m.intonation}, pace ×${m.speed}, tone bass ${sign(m.bass!)} / presence ${sign(m.presence!)} / treble ${sign(m.treble!)} dB. Fine-tune with the sliders below.`);
+    } catch (e: any) { setErr(`Could not read the sample: ${e?.message ?? e}`); }
+    finally { setBusy(''); }
+  };
   const pl = useBufferPlayer();
 
   useEffect(() => { if (input) { setSrc(input); } }, [input]);
@@ -144,7 +163,15 @@ export function StudioTab({ input, media, onTimeline }: {
       </div>
 
       <aside className="tool-side card studio-side">
-        <b className="small">Quick looks</b>
+        <b className="small">🎯 Sound like a sample voice</b>
+        <p className="small muted" style={{ margin: '4px 0 6px' }}>Pick a video or MP3 with the voice you like. Pitch, liveliness, pace and tone are matched (the words and accent stay the voice's own).</p>
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+          <button className="btn small primary" disabled={!src || !!busy} onClick={() => refRef.current?.click()}>Choose sample…</button>
+          <label className="row small"><input type="checkbox" checked={refMusic} onChange={(e) => setRefMusic(e.target.checked)} /> sample has music</label>
+        </div>
+        <input ref={refRef} type="file" accept="audio/*,video/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) matchTo(f); e.target.value = ''; }} />
+        {matched && <Note>{matched}</Note>}
+        <div className="studio-group">Quick looks</div>
         <div className="chips" style={{ marginTop: 6 }}>
           {STUDIO_PRESETS.map(([k, l]) => <button key={k} className={`chip ${preset === k ? 'on' : ''}`} onClick={() => applyPreset(k)}>{l}</button>)}
           <button className="chip" onClick={() => { setS({ ...DEFAULT_STUDIO }); setPreset(''); }}>↺ Reset</button>
@@ -160,6 +187,7 @@ export function StudioTab({ input, media, onTimeline }: {
         <div className="studio-group">Voice</div>
         <Slider label="Speed" value={s.speed} min={0.5} max={2} step={0.05} show={`${s.speed.toFixed(2)}×`} onChange={(v) => set({ speed: v })} hint="Faster or slower — the voice keeps its pitch" />
         <Slider label="Pitch" value={s.pitch} min={-12} max={12} step={0.5} show={`${s.pitch > 0 ? '+' : ''}${s.pitch} semitones`} onChange={(v) => set({ pitch: v })} hint="Deeper (−) or higher (+) voice; length stays the same" />
+        <Slider label="Intonation" value={s.intonation ?? 1} min={0.6} max={1.8} step={0.05} show={`×${(s.intonation ?? 1).toFixed(2)}`} onChange={(v) => set({ intonation: v })} hint="How much the voice rises and falls: higher = livelier, announcer-like; lower = flatter, calmer" />
         <Slider label="Volume" value={s.gain} min={-12} max={12} step={0.5} show={db(s.gain)} onChange={(v) => set({ gain: v })} />
 
         <div className="studio-group">Level & dynamics</div>
@@ -198,3 +226,11 @@ export function StudioTab({ input, media, onTimeline }: {
 }
 
 const sorted = (media: MediaItem[]) => media.filter((m) => m.status === 'ready' && (m.kind === 'audio' || m.hasAudio));
+
+/** The last matched sample voice is remembered so the Voice-over tab can use it too. */
+export function saveSampleProfile(p: VoiceProfile, name: string) {
+  try { localStorage.setItem('sc-sample-voice', JSON.stringify({ ...p, name })); } catch { /* storage blocked */ }
+}
+export function loadSampleProfile(): (VoiceProfile & { name: string }) | null {
+  try { const t = localStorage.getItem('sc-sample-voice'); return t ? JSON.parse(t) : null; } catch { return null; }
+}

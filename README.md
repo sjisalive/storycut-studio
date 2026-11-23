@@ -114,10 +114,12 @@ The voices are open-source models (Kokoro-82M, Apache-2.0; Piper, MIT) that run 
 ### 🎚 Sound Studio tab
 Open any MP3/WAV/video (or a file already in the project, or a voice-over you just made) and change:
 - **Tone:** bass, middle, presence, treble, low cut (rumble removal)
-- **Voice:** speed *without changing pitch*, pitch *without changing speed* (±12 semitones, keeps the voice natural), volume
+- **Voice:** speed *without changing pitch*, pitch *without changing speed* (±12 semitones, keeps the voice natural), intonation (flatter ↔ livelier), volume
 - **Level:** compression, loudness target (−14 LUFS for YouTube/Instagram/WhatsApp, −16 voice-over, −18, −23 TV), peak limit
 - **Space:** echo, reverb
 - **Clean & edit:** noise/hum reduction, shorten long pauses, trim start/end, fade in/out, telephone sound, save as mono
+
+**🎯 Sound like a sample voice:** pick any video or MP3 with a voice you like (music in it is removed first). The studio measures its pitch, intonation, pace and tone and sets the sliders to match your voice-over to it; the Voice-over tab then offers **🎯 Like my sample** for every new voice-over. (This matches how the voice sounds, not the person's identity.)
 
 Quick looks: Clear voice-over, Deep voice, Radio announcer, Warm podcast, Bright & crisp, Telephone, Big hall, Echo, Faster, Slower & calm, Chipmunk, Giant. Before/after waveforms with click-to-listen, and loudness/peak shown for both.
 

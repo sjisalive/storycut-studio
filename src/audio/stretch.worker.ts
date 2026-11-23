@@ -1,7 +1,7 @@
 // Speed change without changing pitch (WSOLA time-stretch), and pause shortening.
 // Runs in a background thread so long voice-overs don't freeze the page.
 
-interface Job { channels: Float32Array[]; sampleRate: number; rate: number; maxPause: number; pitch?: number }
+interface Job { channels: Float32Array[]; sampleRate: number; rate: number; maxPause: number; pitch?: number; expand?: number }
 
 /** Remove the part of every silence that is longer than maxPause seconds (short crossfade). */
 function shortenPauses(ch: Float32Array[], sr: number, maxPause: number): Float32Array[] {
@@ -141,13 +141,16 @@ function trackPitch(x: Float32Array, sr: number): { f0: Float32Array; hop: numbe
 }
 
 /** TD-PSOLA pitch shift: changes pitch, keeps length and voice character (formants). */
-function psola(ch: Float32Array[], sr: number, semitones: number): Float32Array[] {
-  if (!semitones) return ch;
+function psola(ch: Float32Array[], sr: number, semitones: number, expand = 1): Float32Array[] {
+  if (!semitones && Math.abs(expand - 1) < 0.01) return ch;
   const ratio = Math.pow(2, semitones / 12);
   const n = ch[0].length;
   const mix = new Float32Array(n);
   for (const c of ch) for (let i = 0; i < n; i++) mix[i] += c[i] / ch.length;
   const { f0, hop } = trackPitch(mix, sr);
+  // median pitch, for widening/narrowing the intonation around it
+  const voiced = Array.from(f0).filter((v) => v > 0).sort((a, b) => a - b);
+  const med = voiced[voiced.length >> 1] || 120;
   const periodAt = (i: number) => { const v = f0[Math.min(f0.length - 1, Math.floor(i / hop))]; return v ? sr / v : 0; };
   // analysis marks: one per pitch period in voiced parts (snapped to peaks), every 5 ms elsewhere
   const marks: number[] = [], per: number[] = [];
@@ -176,7 +179,7 @@ function psola(ch: Float32Array[], sr: number, semitones: number): Float32Array[
       for (let c = 0; c < ch.length; c++) outs[c][d] += ch[c][s] * w;
       norm[d] += w;
     }
-    t += P ? P / ratio : uv;
+    t += P ? P / Math.min(2, Math.max(0.5, ratio * Math.pow(sr / P / med, expand - 1))) : uv;
     if ((j & 1023) === 0) (self as any).postMessage({ progress: t / n });
   }
   for (const o of outs) for (let k = 0; k < n; k++) o[k] = norm[k] > 0.15 ? o[k] / norm[k] : o[k] / 0.15;
@@ -186,6 +189,6 @@ function psola(ch: Float32Array[], sr: number, semitones: number): Float32Array[
 self.onmessage = (ev: MessageEvent<Job>) => {
   const { channels, sampleRate, rate, maxPause, pitch } = ev.data;
   const a = shortenPauses(channels, sampleRate, maxPause);
-  const b = psola(wsola(a, sampleRate, rate), sampleRate, pitch ?? 0);
+  const b = psola(wsola(a, sampleRate, rate), sampleRate, pitch ?? 0, ev.data.expand ?? 1);
   (self as any).postMessage({ done: true, channels: b }, b.map((c) => c.buffer));
 };
